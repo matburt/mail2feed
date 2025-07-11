@@ -1,0 +1,338 @@
+# Mail2Feed
+
+**Convert mailing lists into RSS/Atom feeds for your feed reader**
+
+Mail2Feed monitors IMAP servers for emails to configurable addresses and converts them into RSS/Atom feeds that can be consumed by feed readers like Miniflux, Feedly, or any RSS-compatible application.
+
+## 🚀 Features
+
+- **IMAP Monitoring**: Connect to any IMAP server to monitor mailing lists
+- **Flexible Filtering**: Filter emails by recipient, sender, subject, or labels
+- **Multiple Feed Formats**: Generate both RSS and Atom feeds
+- **Web Management Interface**: Configure rules and manage feeds through a web UI
+- **Database Storage**: SQLite with planned PostgreSQL support
+- **REST API**: Full REST API for programmatic access
+
+## 🏗️ Architecture
+
+### Backend (Rust)
+- **Framework**: Axum web server with async support
+- **Database**: SQLite via Diesel ORM with connection pooling
+- **IMAP**: Native TLS-enabled IMAP client
+- **Feed Generation**: RSS and Atom syndication support
+
+### Frontend (TypeScript) - *Coming in Phase 4*
+- **Framework**: React with Vite
+- **UI**: Modern web interface for rule management
+- **API Integration**: REST client for backend communication
+
+### Database Schema
+```
+imap_accounts → email_rules → feeds → feed_items
+```
+
+## 📋 Development Status
+
+### ✅ Phase 1: Backend Foundation (Completed)
+- [x] Database schema and migrations
+- [x] Diesel ORM models and operations
+- [x] Axum web server with REST API
+- [x] Comprehensive test suite
+- [x] Development tooling and scripts
+
+### ✅ Phase 2: IMAP Processing (Completed)
+- [x] IMAP client with TLS/non-TLS support
+- [x] Email fetching and folder listing
+- [x] Email filtering by sender, recipient, subject
+- [x] Email parsing with header extraction
+- [x] Processing engine that creates feed items from emails
+- [x] API endpoints for testing and processing accounts
+
+### 📅 Phase 3: Feed Generation (Planned)
+- [ ] RSS feed generation
+- [ ] Atom feed generation
+- [ ] Feed serving endpoints
+
+### 📅 Phase 4: Frontend Interface (Planned)
+- [ ] React web application
+- [ ] Rule management interface
+- [ ] Feed preview and testing
+
+### 📅 Phase 5: Integration & Testing (Planned)
+- [ ] End-to-end testing
+- [ ] Performance optimization
+- [ ] Deployment documentation
+
+## 🛠️ Quick Start
+
+### Prerequisites
+
+- **Rust** (1.70+): Install from [rustup.rs](https://rustup.rs/)
+- **SQLite3**: For database storage
+- **Node.js** (18+): For future frontend development
+
+### Setup Development Environment
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/matburt/mail2feed.git
+   cd mail2feed
+   ```
+
+2. **Run the setup script**
+   ```bash
+   ./scripts/setup.sh
+   ```
+   
+   This will:
+   - Check required tools
+   - Install Diesel CLI
+   - Create configuration files
+   - Set up the database
+   - Install dependencies
+   - Run tests
+
+3. **Start the development server**
+   ```bash
+   ./scripts/dev.sh
+   ```
+
+### Using the IMAP Features
+
+1. **Create an IMAP Account**
+   ```bash
+   curl -X POST http://localhost:3000/api/imap-accounts \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "Gmail Account",
+       "host": "imap.gmail.com",
+       "port": 993,
+       "username": "your-email@gmail.com",
+       "password": "your-app-password",
+       "use_tls": true
+     }'
+   ```
+
+2. **Test the Connection**
+   ```bash
+   curl http://localhost:3000/api/imap/{account-id}/test
+   ```
+   
+   This will return a list of available folders in your IMAP account.
+
+3. **Create an Email Rule**
+   ```bash
+   curl -X POST http://localhost:3000/api/email-rules \
+     -H "Content-Type: application/json" \
+     -d '{
+       "name": "Mailing List Rule",
+       "imap_account_id": "{account-id}",
+       "folder": "INBOX",
+       "from_address": "list@example.com",
+       "subject_contains": "[LIST]",
+       "is_active": true
+     }'
+   ```
+
+4. **Create a Feed**
+   ```bash
+   curl -X POST http://localhost:3000/api/feeds \
+     -H "Content-Type: application/json" \
+     -d '{
+       "title": "Example Mailing List",
+       "description": "RSS feed for the example mailing list",
+       "link": "https://example.com/list",
+       "email_rule_id": "{rule-id}",
+       "feed_type": "rss",
+       "is_active": true
+     }'
+   ```
+
+5. **Process Emails**
+   ```bash
+   # Process a single account
+   curl -X POST http://localhost:3000/api/imap/{account-id}/process
+   
+   # Process all accounts
+   curl -X POST http://localhost:3000/api/imap/process-all
+   ```
+
+### Test the API
+
+```bash
+curl http://localhost:3001/health
+```
+
+### Manual Setup (Alternative)
+
+If you prefer manual setup:
+
+```bash
+# Backend setup
+cd backend
+
+# Install Diesel CLI
+cargo install diesel_cli --no-default-features --features sqlite
+
+# Create environment file
+cp .env.example .env  # Edit as needed
+
+# Setup database
+mkdir -p ../data
+export DATABASE_URL="sqlite:../data/mail2feed.db"
+diesel migration run
+
+# Install dependencies and build
+cargo build
+
+# Run tests
+cargo test
+
+# Start development server
+cargo run
+```
+
+## 🧪 Testing
+
+Run all tests:
+```bash
+./scripts/test.sh
+```
+
+Or manually:
+```bash
+cd backend
+cargo test
+```
+
+### Test Coverage
+- **Database Operations**: CRUD operations for all models
+- **API Endpoints**: REST API integration tests
+- **Cascade Deletes**: Foreign key constraint testing
+- **Error Handling**: Validation and error response testing
+
+## 📚 API Documentation
+
+### Health Check
+```http
+GET /health
+```
+
+### IMAP Accounts
+```http
+GET    /api/imap-accounts          # List all accounts
+POST   /api/imap-accounts          # Create account
+GET    /api/imap-accounts/{id}     # Get account by ID
+PUT    /api/imap-accounts/{id}     # Update account
+DELETE /api/imap-accounts/{id}     # Delete account
+```
+
+### Email Rules
+```http
+GET    /api/email-rules            # List all rules
+POST   /api/email-rules            # Create rule
+GET    /api/email-rules/{id}       # Get rule by ID
+PUT    /api/email-rules/{id}       # Update rule
+DELETE /api/email-rules/{id}       # Delete rule
+```
+
+### Feeds
+```http
+GET    /api/feeds                  # List all feeds
+POST   /api/feeds                  # Create feed
+GET    /api/feeds/{id}             # Get feed by ID
+PUT    /api/feeds/{id}             # Update feed
+DELETE /api/feeds/{id}             # Delete feed
+GET    /api/feeds/{id}/items       # Get feed items
+```
+
+### IMAP Operations
+```http
+GET    /api/imap/{id}/test         # Test IMAP connection and list folders
+POST   /api/imap/{id}/process      # Process emails for an account
+POST   /api/imap/process-all       # Process all accounts
+```
+
+### Feed Output *(Coming in Phase 3)*
+```http
+GET    /feeds/{id}/rss            # RSS feed
+GET    /feeds/{id}/atom           # Atom feed
+```
+
+## 🔧 Configuration
+
+Configuration is managed through environment variables in `backend/.env`:
+
+```env
+# Database
+DATABASE_URL=sqlite:../data/mail2feed.db
+
+# Server
+SERVER_HOST=127.0.0.1
+SERVER_PORT=3001
+
+# Logging
+RUST_LOG=info,mail2feed_backend=debug
+```
+
+## 🗂️ Project Structure
+
+```
+mail2feed/
+├── backend/                 # Rust backend application
+│   ├── src/
+│   │   ├── main.rs         # Application entry point
+│   │   ├── api/            # REST API routes and handlers
+│   │   ├── db/             # Database models, schema, operations
+│   │   ├── imap/           # IMAP client and email processing
+│   │   └── feed/           # Feed generation logic
+│   ├── tests/              # Integration and unit tests
+│   ├── migrations/         # Database migrations
+│   └── Cargo.toml          # Rust dependencies
+├── frontend/               # TypeScript frontend (Phase 4)
+├── scripts/                # Development and deployment scripts
+│   ├── setup.sh           # Development environment setup
+│   ├── dev.sh             # Start development server
+│   ├── test.sh            # Run all tests
+│   └── clean.sh           # Clean build artifacts
+├── data/                   # Database files (created by setup)
+├── CLAUDE.md               # AI assistant context and instructions
+└── README.md               # This file
+```
+
+## 🛠️ Development Scripts
+
+- **`./scripts/setup.sh`** - Complete development environment setup
+- **`./scripts/dev.sh`** - Start development server with hot reloading
+- **`./scripts/test.sh`** - Run all tests with proper configuration
+- **`./scripts/clean.sh`** - Clean build artifacts and temporary files
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make your changes
+4. Run tests (`./scripts/test.sh`)
+5. Commit your changes (`git commit -m 'Add amazing feature'`)
+6. Push to the branch (`git push origin feature/amazing-feature`)
+7. Open a Pull Request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🔗 Links
+
+- **Repository**: https://github.com/matburt/mail2feed
+- **Issues**: https://github.com/matburt/mail2feed/issues
+- **Discussions**: https://github.com/matburt/mail2feed/discussions
+
+## 📞 Support
+
+- Create an [issue](https://github.com/matburt/mail2feed/issues) for bug reports
+- Start a [discussion](https://github.com/matburt/mail2feed/discussions) for questions
+- Check existing documentation and API endpoints
+
+---
+
+**Made with ❤️ by the Mail2Feed community**
