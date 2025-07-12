@@ -6,6 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use crate::db::{DbPool, operations::{FeedOps, FeedItemOps}, models::NewFeed};
+use crate::feed::generator::FeedGenerator;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateFeedRequest {
@@ -165,18 +166,92 @@ async fn get_feed_items(
     }
 }
 
+// Helper function to get feed data and items
+async fn get_feed_data(pool: &DbPool, id: &str) -> Result<(crate::db::models::Feed, Vec<crate::db::models::FeedItem>), Response> {
+    let mut conn = match pool.get() {
+        Ok(conn) => conn,
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response()),
+    };
+
+    // Get the feed metadata
+    let feed = match FeedOps::get_by_id(&mut conn, id) {
+        Ok(feed) => feed,
+        Err(e) => {
+            // Check if it's a not found error by checking the error message
+            let error_msg = e.to_string();
+            if error_msg.contains("not found") || error_msg.contains("NotFound") {
+                return Err((StatusCode::NOT_FOUND,
+                    Json(ErrorResponse { error: format!("Feed with ID '{}' not found", id) })).into_response());
+            } else {
+                return Err((StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse { error: format!("Database error retrieving feed: {}", e) })).into_response());
+            }
+        }
+    };
+
+    // Get feed items (limit to most recent items, configurable via env var)
+    let item_limit = std::env::var("FEED_ITEM_LIMIT")
+        .unwrap_or_else(|_| "50".to_string())
+        .parse::<i64>()
+        .unwrap_or(50);
+    let items = match FeedItemOps::get_by_feed_id(&mut conn, id, Some(item_limit)) {
+        Ok(items) => items,
+        Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: format!("Failed to fetch feed items: {}", e) })).into_response()),
+    };
+
+    Ok((feed, items))
+}
+
 async fn get_rss_feed(
-    State(_pool): State<DbPool>,
-    Path(_id): Path<String>
+    State(pool): State<DbPool>,
+    Path(id): Path<String>
 ) -> Response {
-    (StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse { error: "RSS feed generation not yet implemented".to_string() })).into_response()
+    let (feed, items) = match get_feed_data(&pool, &id).await {
+        Ok(data) => data,
+        Err(error_response) => return error_response,
+    };
+
+    // Generate RSS feed
+    match FeedGenerator::generate_rss(&feed, &items) {
+        Ok(rss_content) => {
+            let cache_duration = get_cache_duration();
+            (StatusCode::OK, [
+                ("content-type", "application/rss+xml; charset=utf-8"),
+                ("cache-control", &format!("public, max-age={}", cache_duration)),
+            ], rss_content).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: format!("Failed to generate RSS feed: {}", e) })).into_response(),
+    }
+}
+
+// Helper function to get cache duration from environment
+fn get_cache_duration() -> String {
+    std::env::var("FEED_CACHE_DURATION")
+        .unwrap_or_else(|_| "300".to_string())
 }
 
 async fn get_atom_feed(
-    State(_pool): State<DbPool>,
-    Path(_id): Path<String>
+    State(pool): State<DbPool>,
+    Path(id): Path<String>
 ) -> Response {
-    (StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse { error: "Atom feed generation not yet implemented".to_string() })).into_response()
+    let (feed, items) = match get_feed_data(&pool, &id).await {
+        Ok(data) => data,
+        Err(error_response) => return error_response,
+    };
+
+    // Generate Atom feed
+    match FeedGenerator::generate_atom(&feed, &items) {
+        Ok(atom_content) => {
+            let cache_duration = get_cache_duration();
+            (StatusCode::OK, [
+                ("content-type", "application/atom+xml; charset=utf-8"),
+                ("cache-control", &format!("public, max-age={}", cache_duration)),
+            ], atom_content).into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: format!("Failed to generate Atom feed: {}", e) })).into_response(),
+    }
 }

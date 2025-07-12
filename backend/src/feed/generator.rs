@@ -61,9 +61,15 @@ impl FeedGenerator {
             
             // Parse the pub_date string to DateTime<Utc>
             if let Ok(pub_date) = DateTime::parse_from_rfc3339(&item.pub_date) {
-                entry.set_updated(pub_date.with_timezone(&Utc));
+                let pub_date_utc = pub_date.with_timezone(&Utc);
+                entry.set_published(Some(pub_date)); // Use original FixedOffset for published
+                entry.set_updated(pub_date_utc);      // Use UTC for updated
             } else {
-                entry.set_updated(Utc::now());
+                let now = Utc::now();
+                // Convert UTC to FixedOffset for published field
+                let now_fixed = now.with_timezone(&chrono::FixedOffset::east_opt(0).unwrap());
+                entry.set_published(Some(now_fixed));
+                entry.set_updated(now);
             }
             
             if let Some(description) = &item.description {

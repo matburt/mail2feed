@@ -361,7 +361,7 @@ async fn test_feeds_crud() {
     let items: Vec<Value> = serde_json::from_slice(&body).unwrap();
     assert_eq!(items.len(), 0);
     
-    // Test RSS feed endpoint (not yet implemented)
+    // Test RSS feed endpoint (should return empty RSS feed)
     let response = app.clone()
         .oneshot(
             Request::builder()
@@ -373,9 +373,15 @@ async fn test_feeds_crud() {
         .await
         .unwrap();
     
-    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_type = response.headers().get("content-type").unwrap().to_str().unwrap();
+    assert_eq!(content_type, "application/rss+xml; charset=utf-8");
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let rss_content = String::from_utf8(body.to_vec()).unwrap();
+    assert!(rss_content.contains("<rss"));
+    assert!(rss_content.contains("Test Feed"));
     
-    // Test Atom feed endpoint (not yet implemented)
+    // Test Atom feed endpoint (should return empty Atom feed)
     let response = app
         .oneshot(
             Request::builder()
@@ -387,7 +393,13 @@ async fn test_feeds_crud() {
         .await
         .unwrap();
     
-    assert_eq!(response.status(), StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_type = response.headers().get("content-type").unwrap().to_str().unwrap();
+    assert_eq!(content_type, "application/atom+xml; charset=utf-8");
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let atom_content = String::from_utf8(body.to_vec()).unwrap();
+    assert!(atom_content.contains("<feed"));
+    assert!(atom_content.contains("Test Feed"));
 }
 
 #[tokio::test]
@@ -445,4 +457,269 @@ async fn test_error_handling() {
         .unwrap();
     
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+}
+
+#[tokio::test]
+async fn test_feed_generation_with_items() {
+    // Ensure clean environment for this test
+    std::env::remove_var("FEED_CACHE_DURATION");
+    
+    let app = app().await;
+    
+    // Create test data (account, rule, feed)
+    let new_account = json!({
+        "name": "Test Account",
+        "host": "imap.test.com",
+        "port": 993,
+        "username": "test@test.com",
+        "password": "testpass",
+        "use_tls": true
+    });
+    
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/imap-accounts")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&new_account).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let account: Value = serde_json::from_slice(&body).unwrap();
+    let account_id = account["id"].as_str().unwrap();
+    
+    let new_rule = json!({
+        "name": "Test Rule",
+        "imap_account_id": account_id,
+        "folder": "INBOX",
+        "to_address": null,
+        "from_address": null,
+        "subject_contains": null,
+        "label": null,
+        "is_active": true
+    });
+    
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/email-rules")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&new_rule).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let rule: Value = serde_json::from_slice(&body).unwrap();
+    let rule_id = rule["id"].as_str().unwrap();
+    
+    let new_feed = json!({
+        "title": "Test Newsletter Feed",
+        "description": "A test newsletter feed from emails",
+        "link": "https://example.com/newsletter",
+        "email_rule_id": rule_id,
+        "feed_type": "rss",
+        "is_active": true
+    });
+    
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/feeds")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&new_feed).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let feed: Value = serde_json::from_slice(&body).unwrap();
+    let feed_id = feed["id"].as_str().unwrap();
+    
+    // Test RSS feed with empty items
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(&format!("/feeds/{}/rss", feed_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_type = response.headers().get("content-type").unwrap().to_str().unwrap();
+    assert_eq!(content_type, "application/rss+xml; charset=utf-8");
+    
+    let cache_control = response.headers().get("cache-control").unwrap().to_str().unwrap();
+    assert_eq!(cache_control, "public, max-age=300");
+    
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let rss_content = String::from_utf8(body.to_vec()).unwrap();
+    
+    // Verify RSS structure
+    assert!(rss_content.contains("<?xml"));
+    assert!(rss_content.contains("<rss"));
+    assert!(rss_content.contains("<channel>"));
+    assert!(rss_content.contains("<title>Test Newsletter Feed</title>"));
+    assert!(rss_content.contains("<description>A test newsletter feed from emails</description>"));
+    assert!(rss_content.contains("<link>https://example.com/newsletter</link>"));
+    
+    // Test Atom feed with empty items
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(&format!("/feeds/{}/atom", feed_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    
+    assert_eq!(response.status(), StatusCode::OK);
+    let content_type = response.headers().get("content-type").unwrap().to_str().unwrap();
+    assert_eq!(content_type, "application/atom+xml; charset=utf-8");
+    
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let atom_content = String::from_utf8(body.to_vec()).unwrap();
+    
+    // Verify Atom structure
+    assert!(atom_content.contains("<?xml"));
+    assert!(atom_content.contains("<feed"));
+    assert!(atom_content.contains("xmlns=\"http://www.w3.org/2005/Atom\""));
+    assert!(atom_content.contains("<title>Test Newsletter Feed</title>"));
+    assert!(atom_content.contains("<subtitle>A test newsletter feed from emails</subtitle>"));
+    
+    // Verify that Atom feeds support both published and updated dates
+    // (Even with empty items, the feed should have the proper structure)
+    assert!(atom_content.contains("<updated>"));
+    
+    // Test 404 for non-existent feed
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/feeds/non-existent-id/rss")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_configurable_cache_duration() {
+    // Set environment variable for custom cache duration
+    std::env::set_var("FEED_CACHE_DURATION", "600");
+    
+    let app = app().await;
+    
+    // Create test data (account, rule, feed)
+    let new_account = json!({
+        "name": "Test Account",
+        "host": "imap.test.com",
+        "port": 993,
+        "username": "test@test.com",
+        "password": "testpass",
+        "use_tls": true
+    });
+    
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/imap-accounts")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&new_account).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let account: Value = serde_json::from_slice(&body).unwrap();
+    let account_id = account["id"].as_str().unwrap();
+    
+    let new_rule = json!({
+        "name": "Test Rule",
+        "imap_account_id": account_id,
+        "folder": "INBOX",
+        "to_address": null,
+        "from_address": null,
+        "subject_contains": null,
+        "label": null,
+        "is_active": true
+    });
+    
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/email-rules")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&new_rule).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let rule: Value = serde_json::from_slice(&body).unwrap();
+    let rule_id = rule["id"].as_str().unwrap();
+    
+    let new_feed = json!({
+        "title": "Config Test Feed",
+        "description": "A test feed for configuration",
+        "link": "https://example.com/config",
+        "email_rule_id": rule_id,
+        "feed_type": "rss",
+        "is_active": true
+    });
+    
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/api/feeds")
+                .header("Content-Type", "application/json")
+                .body(Body::from(serde_json::to_string(&new_feed).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    
+    let body = hyper::body::to_bytes(response.into_body()).await.unwrap();
+    let feed: Value = serde_json::from_slice(&body).unwrap();
+    let feed_id = feed["id"].as_str().unwrap();
+    
+    // Test RSS feed with custom cache duration
+    let response = app.clone()
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri(&format!("/feeds/{}/rss", feed_id))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    
+    assert_eq!(response.status(), StatusCode::OK);
+    let cache_control = response.headers().get("cache-control").unwrap().to_str().unwrap();
+    assert_eq!(cache_control, "public, max-age=600"); // Should use the configured 600 seconds
+    
+    // Clean up environment variable
+    std::env::remove_var("FEED_CACHE_DURATION");
 }
