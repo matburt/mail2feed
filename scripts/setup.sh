@@ -59,12 +59,25 @@ if ! command -v diesel &> /dev/null; then
     cargo install diesel_cli --no-default-features --features sqlite
 fi
 
+# Ensure cargo bin directory is in PATH
+export PATH="$HOME/.cargo/bin:$PATH"
+
+# Verify diesel is now available
+if ! command -v diesel &> /dev/null; then
+    echo "❌ Diesel CLI installation failed or not in PATH"
+    echo "   Please ensure ~/.cargo/bin is in your PATH"
+    exit 1
+fi
+
+# Get absolute path to data directory for consistent use
+DATA_DIR=$(realpath ../data)
+
 # Create .env file if it doesn't exist
 if [ ! -f ".env" ]; then
     echo "📝 Creating .env file..."
     cat > .env << EOF
-# Database configuration
-DATABASE_URL=sqlite:../data/mail2feed.db
+# Database configuration  
+DATABASE_URL=sqlite:${DATA_DIR}/mail2feed.db
 
 # Server configuration
 SERVER_HOST=127.0.0.1
@@ -72,8 +85,12 @@ SERVER_PORT=3001
 
 # Logging configuration
 RUST_LOG=info,mail2feed_backend=debug
+
+# Feed configuration (optional)
+FEED_ITEM_LIMIT=50
+FEED_CACHE_DURATION=300
 EOF
-    echo "✅ Created .env file"
+    echo "✅ Created .env file with absolute database path"
 else
     echo "✅ .env file already exists"
 fi
@@ -85,9 +102,32 @@ echo "✅ Data directory created"
 
 # Setup database
 echo "🗄️  Setting up database..."
-export DATABASE_URL="sqlite:../data/mail2feed.db"
-diesel migration run
-echo "✅ Database migrations completed"
+# Note: For diesel CLI, we don't use the sqlite: prefix in DATABASE_URL
+export DATABASE_URL="${DATA_DIR}/mail2feed.db"
+echo "📝 Database URL: ${DATABASE_URL}"
+
+# Use diesel setup to create database and run migrations
+echo "🔄 Setting up database with diesel..."
+diesel setup
+if [ $? -eq 0 ]; then
+    echo "✅ Database setup completed successfully"
+else
+    echo "❌ Database setup failed with diesel setup. Trying manual approach..."
+    # Create the database file manually if diesel setup failed
+    if [ ! -f "${DATA_DIR}/mail2feed.db" ]; then
+        echo "📋 Creating database file manually..."
+        sqlite3 "${DATA_DIR}/mail2feed.db" "SELECT 1;"
+    fi
+    
+    # Try running migrations
+    diesel migration run
+    if [ $? -eq 0 ]; then
+        echo "✅ Database migrations completed with manual approach"
+    else
+        echo "❌ Database setup failed completely. Please check the error messages above."
+        exit 1
+    fi
+fi
 
 # Install dependencies and build
 echo "📦 Installing Rust dependencies..."
