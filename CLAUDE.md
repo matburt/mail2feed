@@ -24,9 +24,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - ✅ REST API with CRUD endpoints
   - ✅ Database models and operations
   - ✅ Health check and error handling
-  - 🔄 IMAP connection manager (Phase 2)
-  - 🔄 Email processor/filter (Phase 2)
-  - 🔄 Feed generator (Phase 3)
+  - ✅ IMAP connection manager
+  - ✅ Email processor/filter
+  - ✅ Feed generator
 
 ### Frontend (TypeScript) - Phase 4
 - **Framework**: React with Vite
@@ -86,8 +86,8 @@ mail2feed/
 │   │   │   ├── models.rs   # Diesel models and structs
 │   │   │   ├── operations.rs # CRUD operations
 │   │   │   └── schema.rs   # Diesel schema (auto-generated)
-│   │   ├── imap/           # 🔄 IMAP client and email processing (Phase 2)
-│   │   └── feed/           # 🔄 Feed generation logic (Phase 3)
+│   │   ├── imap/           # ✅ IMAP client and email processing
+│   │   └── feed/           # ✅ Feed generation logic
 │   ├── tests/              # ✅ Comprehensive test suite
 │   │   ├── common/         # Test utilities and fixtures
 │   │   ├── db_operations.rs # Database operation tests
@@ -121,17 +121,17 @@ mail2feed/
 - **Configuration**: Environment-based configuration with .env file support
 - **Error Handling**: Proper HTTP status codes and JSON error responses
 
-### 🔄 Phase 2: IMAP Processing (NEXT)
+### ✅ Phase 2: IMAP Processing (COMPLETED)
 - **GitHub Issue**: [#1 - Implement IMAP Processing](https://github.com/matburt/mail2feed/issues/1)
-- IMAP client implementation and connection management
-- Email fetching with filtering and processing
-- Background monitoring service for new emails
+- ✅ IMAP client implementation and connection management
+- ✅ Email fetching with filtering and processing
+- ✅ Background monitoring service for new emails
 
-### 📅 Phase 3: Feed Generation (PLANNED)
+### ✅ Phase 3: Feed Generation (COMPLETED)
 - **GitHub Issue**: [#2 - Build Feed Generation Engine](https://github.com/matburt/mail2feed/issues/2)
-- RSS feed generation from processed emails
-- Atom feed generation with proper formatting
-- Feed serving endpoints with caching
+- ✅ RSS feed generation from processed emails
+- ✅ Atom feed generation with proper formatting
+- ✅ Feed serving endpoints with caching
 
 ### 📅 Phase 4: Frontend Interface (PLANNED)
 - **GitHub Issue**: [#3 - Create Frontend Interface](https://github.com/matburt/mail2feed/issues/3)
@@ -171,16 +171,21 @@ mail2feed/
 - `PUT /api/feeds/{id}` - Update feed
 - `DELETE /api/feeds/{id}` - Delete feed (cascades to items)
 - `GET /api/feeds/{id}/items` - Get feed items
-- `GET /feeds/{id}/rss` - RSS feed output (Phase 3)
-- `GET /feeds/{id}/atom` - Atom feed output (Phase 3)
+- `GET /feeds/{id}/rss` - RSS feed output
+- `GET /feeds/{id}/atom` - Atom feed output
+
+### IMAP Operations
+- `GET /api/imap/{id}/test` - Test IMAP connection and list folders
+- `POST /api/imap/{id}/process` - Process emails for an account
+- `POST /api/imap/process-all` - Process all accounts
 
 ## Testing Strategy (Implemented)
 - ✅ Database operation tests for all CRUD operations
 - ✅ API integration tests for all endpoints
 - ✅ Cascade delete testing with foreign key constraints
 - ✅ Error handling and validation testing
-- 🔄 Unit tests for IMAP processing (Phase 2)
-- 🔄 Unit tests for feed generation (Phase 3)
+- ✅ Unit tests for IMAP processing
+- ✅ Unit tests for feed generation
 - 🔄 Frontend component tests (Phase 4)
 - 🔄 End-to-end tests for critical user flows (Phase 5)
 

@@ -28,10 +28,50 @@ if ! command -v cargo &> /dev/null; then
     exit 1
 fi
 
-# Check Node.js (for future frontend development)
+# Check Node.js (for frontend development)
 if ! command -v node &> /dev/null; then
     echo "⚠️  Node.js is not installed. It will be needed for frontend development."
     echo "   You can install it from https://nodejs.org/"
+else
+    NODE_VERSION=$(node -v | sed 's/v//')
+    REQUIRED_NODE="18.18.0"
+    
+    # Simple version comparison function
+    version_greater_equal() {
+        [ "$(printf '%s\n' "$2" "$1" | sort -V | head -n1)" = "$2" ]
+    }
+    
+    if ! version_greater_equal "$NODE_VERSION" "$REQUIRED_NODE"; then
+        echo "⚠️  Node.js version $NODE_VERSION is too old. Frontend requires >= $REQUIRED_NODE"
+        echo "   Current: v$NODE_VERSION"
+        echo "   Required: >= v$REQUIRED_NODE"
+        echo ""
+        echo "📋 To upgrade Node.js:"
+        echo "   Option 1 - Using Node Version Manager (recommended):"
+        echo "     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash"
+        echo "     source ~/.bashrc"
+        echo "     nvm install 20"
+        echo "     nvm use 20"
+        echo ""
+        echo "   Option 2 - Download from nodejs.org:"
+        echo "     https://nodejs.org/ (download LTS version)"
+        echo ""
+        echo "   Option 3 - Using package manager:"
+        if command -v apt-get &> /dev/null; then
+            echo "     curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -"
+            echo "     sudo apt-get install -y nodejs"
+        elif command -v yum &> /dev/null; then
+            echo "     curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -"
+            echo "     sudo yum install -y nodejs"
+        elif command -v brew &> /dev/null; then
+            echo "     brew install node@20"
+        fi
+        echo ""
+        echo "⏸️  Skipping frontend setup due to Node.js version incompatibility."
+        SKIP_FRONTEND=true
+    else
+        echo "✅ Node.js version $NODE_VERSION meets requirements (>= $REQUIRED_NODE)"
+    fi
 fi
 
 # Check SQLite3
@@ -141,18 +181,26 @@ echo "✅ All tests passed"
 
 cd ..
 
-# Setup frontend (future)
-echo "🌐 Frontend setup (placeholder for future development)..."
-if [ -d "frontend" ]; then
+# Setup frontend
+echo "🌐 Frontend setup..."
+if [ "$SKIP_FRONTEND" = true ]; then
+    echo "⏸️  Skipping frontend setup due to Node.js compatibility issues"
+    echo "   Please upgrade Node.js and run the setup script again"
+elif [ -d "frontend" ]; then
     cd frontend
     if [ -f "package.json" ] && command -v npm &> /dev/null; then
         echo "📦 Installing frontend dependencies..."
-        npm install
-        echo "✅ Frontend dependencies installed"
+        if npm install; then
+            echo "✅ Frontend dependencies installed"
+        else
+            echo "❌ Frontend dependency installation failed"
+            echo "   This might be due to Node.js version compatibility"
+            echo "   Please check the error messages above"
+        fi
     fi
     cd ..
 else
-    echo "ℹ️  Frontend directory not yet created - will be added in Phase 4"
+    echo "ℹ️  Frontend directory found but ready for Phase 4 development"
 fi
 
 echo ""

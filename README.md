@@ -48,10 +48,10 @@ imap_accounts → email_rules → feeds → feed_items
 - [x] Processing engine that creates feed items from emails
 - [x] API endpoints for testing and processing accounts
 
-### 📅 Phase 3: Feed Generation (Planned)
-- [ ] RSS feed generation
-- [ ] Atom feed generation
-- [ ] Feed serving endpoints
+### ✅ Phase 3: Feed Generation (Completed)
+- [x] RSS feed generation
+- [x] Atom feed generation  
+- [x] Feed serving endpoints with caching
 
 ### 📅 Phase 4: Frontend Interface (Planned)
 - [ ] React web application
@@ -101,7 +101,7 @@ imap_accounts → email_rules → feeds → feed_items
 
 1. **Create an IMAP Account**
    ```bash
-   curl -X POST http://localhost:3000/api/imap-accounts \
+   curl -X POST http://localhost:3001/api/imap-accounts \
      -H "Content-Type: application/json" \
      -d '{
        "name": "Gmail Account",
@@ -115,14 +115,14 @@ imap_accounts → email_rules → feeds → feed_items
 
 2. **Test the Connection**
    ```bash
-   curl http://localhost:3000/api/imap/{account-id}/test
+   curl http://localhost:3001/api/imap/{account-id}/test
    ```
    
    This will return a list of available folders in your IMAP account.
 
 3. **Create an Email Rule**
    ```bash
-   curl -X POST http://localhost:3000/api/email-rules \
+   curl -X POST http://localhost:3001/api/email-rules \
      -H "Content-Type: application/json" \
      -d '{
        "name": "Mailing List Rule",
@@ -136,7 +136,7 @@ imap_accounts → email_rules → feeds → feed_items
 
 4. **Create a Feed**
    ```bash
-   curl -X POST http://localhost:3000/api/feeds \
+   curl -X POST http://localhost:3001/api/feeds \
      -H "Content-Type: application/json" \
      -d '{
        "title": "Example Mailing List",
@@ -151,10 +151,10 @@ imap_accounts → email_rules → feeds → feed_items
 5. **Process Emails**
    ```bash
    # Process a single account
-   curl -X POST http://localhost:3000/api/imap/{account-id}/process
+   curl -X POST http://localhost:3001/api/imap/{account-id}/process
    
    # Process all accounts
-   curl -X POST http://localhost:3000/api/imap/process-all
+   curl -X POST http://localhost:3001/api/imap/process-all
    ```
 
 ### Test the API
@@ -253,7 +253,7 @@ POST   /api/imap/{id}/process      # Process emails for an account
 POST   /api/imap/process-all       # Process all accounts
 ```
 
-### Feed Output *(Coming in Phase 3)*
+### Feed Output
 ```http
 GET    /feeds/{id}/rss            # RSS feed
 GET    /feeds/{id}/atom           # Atom feed
@@ -273,6 +273,10 @@ SERVER_PORT=3001
 
 # Logging
 RUST_LOG=info,mail2feed_backend=debug
+
+# Feed Configuration (optional)
+FEED_ITEM_LIMIT=50              # Maximum items per feed
+FEED_CACHE_DURATION=300         # Cache duration in seconds
 ```
 
 ## 🗂️ Project Structure
