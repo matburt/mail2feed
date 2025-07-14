@@ -621,7 +621,8 @@ async fn test_feed_generation_with_items() {
 
 #[tokio::test]
 async fn test_configurable_cache_duration() {
-    // Set environment variable for custom cache duration
+    // Ensure clean environment and set custom cache duration
+    std::env::remove_var("FEED_CACHE_DURATION");
     std::env::set_var("FEED_CACHE_DURATION", "600");
     
     let app = app().await;

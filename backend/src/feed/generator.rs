@@ -100,6 +100,7 @@ impl FeedGenerator {
         Ok(atom_feed.to_string())
     }
     
+    #[allow(dead_code)]
     pub fn email_to_feed_item(
         feed_id: String,
         subject: &str,
@@ -124,6 +125,7 @@ impl FeedGenerator {
         }
     }
     
+    #[allow(dead_code)]
     fn format_email_content(from: &str, body: &str) -> String {
         format!("<p><strong>From:</strong> {}</p><pre>{}</pre>", from, body)
     }

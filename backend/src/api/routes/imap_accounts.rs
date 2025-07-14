@@ -1,5 +1,5 @@
 use axum::{
-    routing::{delete, get, post, put}, 
+    routing::get, 
     Router, Json, extract::{State, Path},
     http::StatusCode,
     response::{IntoResponse, Response}

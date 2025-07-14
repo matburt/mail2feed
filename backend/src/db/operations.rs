@@ -85,6 +85,7 @@ impl EmailRuleOps {
             .map_err(|e| anyhow::anyhow!("Failed to load email rules for account {}: {}", account_id, e))
     }
 
+    #[allow(dead_code)]
     pub fn get_active(conn: &mut SqliteConnection) -> Result<Vec<EmailRule>> {
         email_rules::table
             .filter(email_rules::is_active.eq(true))
@@ -144,6 +145,7 @@ impl FeedOps {
             .map_err(|e| anyhow::anyhow!("Failed to load feeds: {}", e))
     }
 
+    #[allow(dead_code)]
     pub fn get_active(conn: &mut SqliteConnection) -> Result<Vec<Feed>> {
         feeds::table
             .filter(feeds::is_active.eq(true))
@@ -217,6 +219,7 @@ impl FeedItemOps {
             .map_err(|e| anyhow::anyhow!("Failed to load feed items for feed {}: {}", feed_id, e))
     }
 
+    #[allow(dead_code)]
     pub fn get_by_email_message_id(conn: &mut SqliteConnection, message_id: &str) -> Result<Option<FeedItem>> {
         feed_items::table
             .filter(feed_items::email_message_id.eq(message_id))
@@ -225,6 +228,7 @@ impl FeedItemOps {
             .map_err(|e| anyhow::anyhow!("Failed to find feed item by message ID {}: {}", message_id, e))
     }
 
+    #[allow(dead_code)]
     pub fn delete_by_feed_id(conn: &mut SqliteConnection, feed_id: &str) -> Result<()> {
         diesel::delete(feed_items::table.filter(feed_items::feed_id.eq(feed_id)))
             .execute(conn)
@@ -232,6 +236,7 @@ impl FeedItemOps {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn delete(conn: &mut SqliteConnection, item_id: &str) -> Result<()> {
         diesel::delete(feed_items::table.find(item_id))
             .execute(conn)

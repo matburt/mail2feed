@@ -188,6 +188,7 @@ struct RuleProcessingResult {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct ProcessedEmail {
     pub email: Email,
     pub rule_id: String,

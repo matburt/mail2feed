@@ -175,6 +175,7 @@ impl ImapClient {
         Ok(emails)
     }
     
+    #[allow(dead_code)]
     pub fn search_emails(&self, folder: &str, query: &str) -> Result<Vec<Email>> {
         if self.account.use_tls {
             self.search_emails_tls(folder, query)
@@ -183,6 +184,7 @@ impl ImapClient {
         }
     }
     
+    #[allow(dead_code)]
     fn search_emails_tls(&self, folder: &str, query: &str) -> Result<Vec<Email>> {
         let mut session = self.connect_tls()?;
         
@@ -216,6 +218,7 @@ impl ImapClient {
         Ok(emails)
     }
     
+    #[allow(dead_code)]
     fn search_emails_plain(&self, folder: &str, query: &str) -> Result<Vec<Email>> {
         let mut session = self.connect_plain()?;
         
@@ -304,6 +307,7 @@ fn parse_email(fetch: &Fetch) -> Result<Email> {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Email {
     pub uid: u32,
     pub message_id: String,

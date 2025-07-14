@@ -29,8 +29,8 @@ echo ""
 echo "🦀 Running backend tests..."
 echo "----------------------------------------"
 
-# Run tests with output
-cargo test --verbose
+# Run tests with output (single-threaded to avoid environment variable race conditions)
+cargo test --verbose -- --test-threads=1
 
 echo ""
 echo "✅ Backend tests completed successfully!"
@@ -44,8 +44,13 @@ if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
     cd frontend
     
     if command -v npm &> /dev/null; then
-        npm test
-        echo "✅ Frontend tests completed successfully!"
+        # Check if test script exists in package.json
+        if npm run | grep -q "test"; then
+            npm test
+            echo "✅ Frontend tests completed successfully!"
+        else
+            echo "ℹ️  No test script defined in package.json, skipping frontend tests"
+        fi
     else
         echo "⚠️  npm not found, skipping frontend tests"
     fi

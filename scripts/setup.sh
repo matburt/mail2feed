@@ -134,9 +134,9 @@ echo "📦 Installing Rust dependencies..."
 cargo build
 echo "✅ Rust dependencies installed and project built"
 
-# Run tests
+# Run tests (single-threaded to avoid environment variable race conditions)
 echo "🧪 Running tests..."
-cargo test
+cargo test -- --test-threads=1
 echo "✅ All tests passed"
 
 cd ..
