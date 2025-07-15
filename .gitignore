@@ -1,14 +1,21 @@
 # Rust
 /target/
+**/target/
 **/*.rs.bk
 Cargo.lock
 
 # TypeScript/Node.js
 node_modules/
+**/node_modules/
 dist/
+**/dist/
 build/
+**/build/
 *.tsbuildinfo
 .cache/
+**/.cache/
+coverage/
+**/coverage/
 
 # Environment files
 .env
@@ -35,3 +42,14 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
+
+# Lock files (keep package-lock.json for reproducible builds)
+yarn.lock
+pnpm-lock.yaml
+
+# Temporary files
+*.tmp
+*.temp
+*~
+.#*
