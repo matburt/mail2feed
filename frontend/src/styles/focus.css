@@ -1,0 +1,53 @@
+/* Focus Ring Styles for Accessibility */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2;
+}
+
+.focus-ring-inset {
+  @apply focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-inset;
+}
+
+/* Skip Link Styles */
+.skip-link {
+  @apply absolute left-0 top-0 z-50 bg-primary-600 text-white px-4 py-2 text-sm font-medium rounded-br-md;
+  @apply transform -translate-y-full transition-transform duration-300;
+  @apply focus:translate-y-0;
+}
+
+/* Form Fieldset Styles */
+.form-fieldset {
+  @apply border border-gray-200 rounded-lg p-4 space-y-4;
+}
+
+.form-fieldset legend {
+  @apply text-lg font-semibold text-gray-900 px-2;
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  .focus-ring {
+    @apply focus:ring-4 focus:ring-offset-4;
+  }
+  
+  .btn {
+    @apply border-2;
+  }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  .transition-colors,
+  .transition-transform,
+  .transition-all,
+  .animate-spin,
+  .animate-pulse {
+    @apply transition-none animate-none;
+  }
+}
+
+/* Dark Mode Accessibility */
+@media (prefers-color-scheme: dark) {
+  .focus-ring {
+    @apply focus:ring-primary-400;
+  }
+}
