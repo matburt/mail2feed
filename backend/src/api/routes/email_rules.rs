@@ -5,7 +5,8 @@ use axum::{
     response::{IntoResponse, Response}
 };
 use serde::{Deserialize, Serialize};
-use crate::db::{DbPool, operations::EmailRuleOps, models::NewEmailRule};
+use crate::api::AppState;
+use crate::db::{operations::EmailRuleOps, models::NewEmailRule};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateEmailRuleRequest {
@@ -36,14 +37,14 @@ pub struct ErrorResponse {
     error: String,
 }
 
-pub fn routes() -> Router<DbPool> {
+pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/email-rules", get(list_rules).post(create_rule))
         .route("/api/email-rules/:id", get(get_rule).put(update_rule).delete(delete_rule))
 }
 
-async fn list_rules(State(pool): State<DbPool>) -> Response {
-    let mut conn = match pool.get() {
+async fn list_rules(State(state): State<AppState>) -> Response {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, 
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -57,10 +58,10 @@ async fn list_rules(State(pool): State<DbPool>) -> Response {
 }
 
 async fn create_rule(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Json(req): Json<CreateEmailRuleRequest>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -85,10 +86,10 @@ async fn create_rule(
 }
 
 async fn get_rule(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -102,11 +103,11 @@ async fn get_rule(
 }
 
 async fn update_rule(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<UpdateEmailRuleRequest>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -131,10 +132,10 @@ async fn update_rule(
 }
 
 async fn delete_rule(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),

@@ -33,6 +33,8 @@ async fn main() -> anyhow::Result<()> {
     
     info!("Database pool created successfully!");
     
+    // Background service temporarily disabled for AppState migration
+    
     // Get server configuration from environment
     let host = env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
     let port = env::var("SERVER_PORT")
@@ -55,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
     };
     
     // Build the application routes
-    let app = api::create_routes(pool)
+    let app = api::create_routes(pool, background_handle)
         .layer(cors.allow_headers(Any).allow_methods(Any));
     
     // Start the server

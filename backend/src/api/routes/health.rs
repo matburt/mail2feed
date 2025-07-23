@@ -1,7 +1,7 @@
 use axum::{routing::get, Router, Json, extract::State};
 use serde::Serialize;
 use chrono::Utc;
-use crate::db::DbPool;
+use crate::api::AppState;
 
 #[derive(Serialize)]
 pub struct HealthResponse {
@@ -11,12 +11,12 @@ pub struct HealthResponse {
     database: String,
 }
 
-pub fn routes() -> Router<DbPool> {
+pub fn routes() -> Router<AppState> {
     Router::new().route("/health", get(health_check))
 }
 
-async fn health_check(State(pool): State<DbPool>) -> Json<HealthResponse> {
-    let db_status = match pool.get() {
+async fn health_check(State(state): State<AppState>) -> Json<HealthResponse> {
+    let db_status = match state.pool.get() {
         Ok(_) => "connected",
         Err(_) => "disconnected",
     };

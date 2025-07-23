@@ -5,7 +5,8 @@ use axum::{
     response::{IntoResponse, Response}
 };
 use serde::{Deserialize, Serialize};
-use crate::db::{DbPool, operations::ImapAccountOps, models::NewImapAccount};
+use crate::api::AppState;
+use crate::db::{operations::ImapAccountOps, models::NewImapAccount};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateImapAccountRequest {
@@ -32,14 +33,14 @@ pub struct ErrorResponse {
     error: String,
 }
 
-pub fn routes() -> Router<DbPool> {
+pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/imap-accounts", get(list_accounts).post(create_account))
         .route("/api/imap-accounts/:id", get(get_account).put(update_account).delete(delete_account))
 }
 
-async fn list_accounts(State(pool): State<DbPool>) -> Response {
-    let mut conn = match pool.get() {
+async fn list_accounts(State(state): State<AppState>) -> Response {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, 
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -53,10 +54,10 @@ async fn list_accounts(State(pool): State<DbPool>) -> Response {
 }
 
 async fn create_account(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Json(req): Json<CreateImapAccountRequest>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -79,10 +80,10 @@ async fn create_account(
 }
 
 async fn get_account(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -96,11 +97,11 @@ async fn get_account(
 }
 
 async fn update_account(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<UpdateImapAccountRequest>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -123,10 +124,10 @@ async fn update_account(
 }
 
 async fn delete_account(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),

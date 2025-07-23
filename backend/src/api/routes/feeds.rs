@@ -5,7 +5,8 @@ use axum::{
     response::{IntoResponse, Response}
 };
 use serde::{Deserialize, Serialize};
-use crate::db::{DbPool, operations::{FeedOps, FeedItemOps}, models::NewFeed};
+use crate::api::AppState;
+use crate::db::{operations::{FeedOps, FeedItemOps}, models::NewFeed};
 use crate::feed::generator::FeedGenerator;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -38,7 +39,7 @@ pub struct ErrorResponse {
     error: String,
 }
 
-pub fn routes() -> Router<DbPool> {
+pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/feeds", get(list_feeds).post(create_feed))
         .route("/api/feeds/:id", get(get_feed).put(update_feed).delete(delete_feed))
@@ -47,8 +48,8 @@ pub fn routes() -> Router<DbPool> {
         .route("/feeds/:id/atom", get(get_atom_feed))
 }
 
-async fn list_feeds(State(pool): State<DbPool>) -> Response {
-    let mut conn = match pool.get() {
+async fn list_feeds(State(state): State<AppState>) -> Response {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, 
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -62,10 +63,10 @@ async fn list_feeds(State(pool): State<DbPool>) -> Response {
 }
 
 async fn create_feed(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Json(req): Json<CreateFeedRequest>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -88,10 +89,10 @@ async fn create_feed(
 }
 
 async fn get_feed(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -105,11 +106,11 @@ async fn get_feed(
 }
 
 async fn update_feed(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<UpdateFeedRequest>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -132,10 +133,10 @@ async fn update_feed(
 }
 
 async fn delete_feed(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -149,11 +150,11 @@ async fn delete_feed(
 }
 
 async fn get_feed_items(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Query(params): Query<FeedItemsQuery>
 ) -> Response {
-    let mut conn = match pool.get() {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
@@ -167,8 +168,8 @@ async fn get_feed_items(
 }
 
 // Helper function to get feed data and items
-async fn get_feed_data(pool: &DbPool, id: &str) -> Result<(crate::db::models::Feed, Vec<crate::db::models::FeedItem>), Response> {
-    let mut conn = match pool.get() {
+async fn get_feed_data(state: &AppState, id: &str) -> Result<(crate::db::models::Feed, Vec<crate::db::models::FeedItem>), Response> {
+    let mut conn = match state.pool.get() {
         Ok(conn) => conn,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response()),
@@ -205,10 +206,10 @@ async fn get_feed_data(pool: &DbPool, id: &str) -> Result<(crate::db::models::Fe
 }
 
 async fn get_rss_feed(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>
 ) -> Response {
-    let (feed, items) = match get_feed_data(&pool, &id).await {
+    let (feed, items) = match get_feed_data(&state, &id).await {
         Ok(data) => data,
         Err(error_response) => return error_response,
     };
@@ -234,10 +235,10 @@ fn get_cache_duration() -> String {
 }
 
 async fn get_atom_feed(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
     Path(id): Path<String>
 ) -> Response {
-    let (feed, items) = match get_feed_data(&pool, &id).await {
+    let (feed, items) = match get_feed_data(&state, &id).await {
         Ok(data) => data,
         Err(error_response) => return error_response,
     };

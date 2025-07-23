@@ -8,7 +8,8 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::{info, error};
 
-use crate::db::{DbPool, operations::ImapAccountOps};
+use crate::api::AppState;
+use crate::db::operations::ImapAccountOps;
 use crate::imap::{ImapClient, EmailProcessor};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,11 +31,11 @@ pub struct ProcessAccountResponse {
 // Test IMAP connection and list folders
 pub async fn test_connection(
     Path(account_id): Path<String>,
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
 ) -> Result<Json<TestConnectionResponse>, (StatusCode, String)> {
     info!("Testing IMAP connection for account: {}", account_id);
     
-    let mut conn = pool
+    let mut conn = state.pool
         .get()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -114,11 +115,11 @@ pub async fn test_connection(
 // Process emails for an account
 pub async fn process_account(
     Path(account_id): Path<String>,
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
 ) -> Result<Json<ProcessAccountResponse>, (StatusCode, String)> {
     info!("Processing IMAP account: {}", account_id);
     
-    let mut conn = pool
+    let mut conn = state.pool
         .get()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -130,7 +131,7 @@ pub async fn process_account(
     drop(conn);
     
     // Create processor with pool
-    let processor = EmailProcessor::new(account, pool);
+    let processor = EmailProcessor::new(account, state.pool.clone());
     
     // Process emails
     match processor.process_account().await {
@@ -159,11 +160,11 @@ pub async fn process_account(
 
 // Process all active accounts
 pub async fn process_all_accounts(
-    State(pool): State<DbPool>,
+    State(state): State<AppState>,
 ) -> Result<Json<Vec<ProcessAccountResponse>>, (StatusCode, String)> {
     info!("Processing all IMAP accounts");
     
-    let mut conn = pool
+    let mut conn = state.pool
         .get()
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
@@ -177,7 +178,7 @@ pub async fn process_all_accounts(
     
     for account in accounts {
         info!("Processing account: {}", account.name);
-        let processor = EmailProcessor::new(account, pool.clone());
+        let processor = EmailProcessor::new(account, state.pool.clone());
         
         match processor.process_account().await {
             Ok(result) => {
@@ -203,7 +204,7 @@ pub async fn process_all_accounts(
     Ok(Json(results))
 }
 
-pub fn routes() -> Router<DbPool> {
+pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/imap/:id/test", get(test_connection))
         .route("/api/imap/:id/process", post(process_account))
