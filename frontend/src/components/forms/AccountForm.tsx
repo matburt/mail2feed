@@ -130,14 +130,17 @@ export default function AccountForm({ account, onSubmit, onCancel }: AccountForm
           } else {
             toast.error('Connection test failed', result.message)
           }
-          
-          // If test fails, delete the temporary account
-          if (!result.success) {
-            await accountsApi.delete(tempAccount.id)
-          }
         } catch (error) {
-          await accountsApi.delete(tempAccount.id)
+          const message = error instanceof Error ? error.message : 'Connection test failed'
+          toast.error('Connection test failed', message)
           throw error
+        } finally {
+          // Always delete the temporary account after testing
+          try {
+            await accountsApi.delete(tempAccount.id)
+          } catch (deleteError) {
+            console.warn('Failed to delete temporary account:', deleteError)
+          }
         }
       } else {
         // For existing accounts, update first then test
