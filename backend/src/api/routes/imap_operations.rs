@@ -70,9 +70,41 @@ pub async fn test_connection(
         }
         Err(e) => {
             error!("Connection test failed: {}", e);
+            
+            // Extract more specific error information
+            let error_message = if e.to_string().contains("Unable to parse status response") {
+                format!("Connection failed: The server response was not in expected IMAP format. \
+                        This often happens when: \
+                        1) The port is wrong (e.g., using HTTP port instead of IMAP port), \
+                        2) The server is not an IMAP server, \
+                        3) TLS/SSL settings are incorrect. \
+                        Common IMAP ports: 143 (plain), 993 (TLS/SSL). \
+                        Original error: {}", e)
+            } else if e.to_string().contains("certificate") {
+                format!("TLS certificate error: {}. \
+                        The server's certificate may be self-signed or expired. \
+                        For testing, you might need to use plain connection (port 143) instead of TLS.", e)
+            } else if e.to_string().contains("timeout") {
+                format!("Connection timeout: {}. \
+                        The server is not responding. Check if the host and port are correct \
+                        and that your firewall allows the connection.", e)
+            } else if e.to_string().contains("password") || e.to_string().contains("auth") {
+                format!("Authentication failed: {}. \
+                        Check your username and password. \
+                        For Gmail, use an app-specific password. \
+                        For Outlook/Office365, you might need to enable IMAP access.", e)
+            } else if e.to_string().contains("logout") {
+                format!("Connection successful but logout failed: {}. \
+                        This is common with Protonmail Bridge and similar local IMAP servers. \
+                        The connection test succeeded, but the server has quirks with logout commands. \
+                        This should not affect normal operation.", e)
+            } else {
+                format!("Connection failed: {}", e)
+            };
+            
             Ok(Json(TestConnectionResponse {
                 success: false,
-                message: format!("Failed to connect: {}", e),
+                message: error_message,
                 folders: None,
             }))
         }

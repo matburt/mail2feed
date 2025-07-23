@@ -2,6 +2,7 @@
 name = "mail2feed-backend"
 version = "0.1.0"
 edition = "2021"
+default-run = "mail2feed-backend"
 
 [dependencies]
 # Web framework

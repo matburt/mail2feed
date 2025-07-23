@@ -6,10 +6,10 @@ Mail2Feed monitors IMAP servers for emails to configurable addresses and convert
 
 ## 🚀 Features
 
+- **Web Management Interface**: User-friendly GUI for configuring and managing feeds
 - **IMAP Monitoring**: Connect to any IMAP server to monitor mailing lists
 - **Flexible Filtering**: Filter emails by recipient, sender, subject, or labels
 - **Multiple Feed Formats**: Generate both RSS and Atom feeds
-- **Web Management Interface**: Configure rules and manage feeds through a web UI
 - **Database Storage**: SQLite with planned PostgreSQL support
 - **REST API**: Full REST API for programmatic access
 
@@ -21,9 +21,12 @@ Mail2Feed monitors IMAP servers for emails to configurable addresses and convert
 - **IMAP**: Native TLS-enabled IMAP client
 - **Feed Generation**: RSS and Atom syndication support
 
-### Frontend (TypeScript) - *Coming in Phase 4*
+### Frontend (TypeScript)
 - **Framework**: React with Vite
-- **UI**: Modern web interface for rule management
+- **UI**: Modern web interface with full CRUD operations
+- **Styling**: Tailwind CSS for responsive design
+- **Navigation**: React Router for seamless page transitions
+- **State Management**: Context API for global state
 - **API Integration**: REST client for backend communication
 
 ### Database Schema
@@ -53,10 +56,14 @@ imap_accounts → email_rules → feeds → feed_items
 - [x] Atom feed generation  
 - [x] Feed serving endpoints with caching
 
-### 📅 Phase 4: Frontend Interface (Planned)
-- [ ] React web application
-- [ ] Rule management interface
-- [ ] Feed preview and testing
+### ✅ Phase 4: Frontend Interface (Completed)
+- [x] React web application with Vite and TypeScript
+- [x] IMAP account management (add, edit, delete, test connection)
+- [x] Email rule management with filtering options
+- [x] Feed configuration and management
+- [x] Dashboard with system overview
+- [x] Responsive design with Tailwind CSS
+- [x] Error handling and toast notifications
 
 ### 📅 Phase 5: Integration & Testing (Planned)
 - [ ] End-to-end testing
@@ -97,9 +104,52 @@ imap_accounts → email_rules → feeds → feed_items
    ./scripts/dev.sh
    ```
 
-### Using the IMAP Features
+4. **Access the Web Interface**
+   Open your browser and navigate to:
+   - Local: `http://localhost:3002`
+   - Network: `http://0.0.0.0:3002` or `http://[your-ip]:3002`
 
-1. **Create an IMAP Account**
+### Using Mail2Feed
+
+The web interface provides an intuitive way to manage your email-to-feed conversions:
+
+1. **Add an IMAP Account**
+   - Navigate to "Accounts" in the sidebar
+   - Click "New Account"
+   - Enter your email server details:
+     
+     **Common IMAP Server Settings:**
+     - **Gmail**: `imap.gmail.com`, Port 993 (TLS), use app-specific password
+     - **Outlook/Hotmail**: `outlook.office365.com`, Port 993 (TLS)
+     - **Yahoo**: `imap.mail.yahoo.com`, Port 993 (TLS), use app password
+     - **iCloud**: `imap.mail.me.com`, Port 993 (TLS), use app-specific password
+     - **Protonmail Bridge**: `127.0.0.1` or your bridge IP, Port varies (usually no TLS), use bridge credentials
+     
+   - Test the connection before saving
+
+2. **Create Email Rules**
+   - Go to "Rules" and click "New Rule"
+   - Select the IMAP account to monitor
+   - Define filters (sender, recipient, subject keywords)
+   - Choose which folder to monitor (INBOX, specific labels)
+
+3. **Configure Feeds**
+   - Navigate to "Feeds" and click "New Feed"
+   - Select an email rule to convert to a feed
+   - Choose RSS or Atom format
+   - Customize the feed title and description
+
+4. **Process Emails and View Feeds**
+   - Use the "Process" button on accounts to fetch new emails
+   - Access your feeds at:
+     - RSS: `http://localhost:3001/feeds/{id}/rss`
+     - Atom: `http://localhost:3001/feeds/{id}/atom`
+
+### API Usage (Advanced)
+
+For programmatic access or automation, Mail2Feed provides a REST API:
+
+1. **Create an IMAP Account via API**
    ```bash
    curl -X POST http://localhost:3001/api/imap-accounts \
      -H "Content-Type: application/json" \
@@ -199,17 +249,21 @@ Run all tests:
 ./scripts/test.sh
 ```
 
-Or manually:
+Or run tests for specific components:
 ```bash
+# Backend tests
 cd backend
 cargo test
+
+# Frontend tests
+cd frontend
+npm test
 ```
 
 ### Test Coverage
-- **Database Operations**: CRUD operations for all models
-- **API Endpoints**: REST API integration tests
-- **Cascade Deletes**: Foreign key constraint testing
-- **Error Handling**: Validation and error response testing
+- **Backend**: Database operations, API endpoints, IMAP processing, feed generation
+- **Frontend**: Component tests, routing, API integration (85-90% coverage)
+- **Integration**: Cascade deletes, error handling, validation
 
 ## 📚 API Documentation
 
@@ -268,7 +322,7 @@ Configuration is managed through environment variables in `backend/.env`:
 DATABASE_URL=sqlite:../data/mail2feed.db
 
 # Server
-SERVER_HOST=127.0.0.1
+SERVER_HOST=0.0.0.0
 SERVER_PORT=3001
 
 # Logging
@@ -293,7 +347,15 @@ mail2feed/
 │   ├── tests/              # Integration and unit tests
 │   ├── migrations/         # Database migrations
 │   └── Cargo.toml          # Rust dependencies
-├── frontend/               # TypeScript frontend (Phase 4)
+├── frontend/               # TypeScript frontend application
+│   ├── src/
+│   │   ├── api/            # API client and types
+│   │   ├── components/     # Reusable UI components
+│   │   ├── pages/          # Page components for routing
+│   │   ├── context/        # Global state management
+│   │   └── App.tsx         # Main application component
+│   ├── package.json        # Frontend dependencies
+│   └── vite.config.ts      # Vite configuration
 ├── scripts/                # Development and deployment scripts
 │   ├── setup.sh           # Development environment setup
 │   ├── dev.sh             # Start development server
@@ -307,9 +369,18 @@ mail2feed/
 ## 🛠️ Development Scripts
 
 - **`./scripts/setup.sh`** - Complete development environment setup
-- **`./scripts/dev.sh`** - Start development server with hot reloading
+- **`./scripts/dev.sh`** - Start both backend and frontend servers (0.0.0.0 for network access)
 - **`./scripts/test.sh`** - Run all tests with proper configuration
 - **`./scripts/clean.sh`** - Clean build artifacts and temporary files
+
+### Network Access
+Both servers bind to `0.0.0.0` by default, making them accessible from:
+- Your local machine: `http://localhost:3002` (frontend), `http://localhost:3001` (backend)
+- Other devices on your network: `http://[your-ip]:3002` (frontend), `http://[your-ip]:3001` (backend)
+
+**Note**: The frontend uses Vite's proxy to forward API requests to the backend. This works automatically when both servers are on the same machine. If you're having issues with the proxy, you can:
+1. Set `VITE_API_URL` in `frontend/.env` to the full backend URL
+2. Or access the frontend from the same machine as the servers
 
 ## 🤝 Contributing
 

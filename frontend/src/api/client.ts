@@ -1,5 +1,7 @@
 // Base API configuration
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+// In development, we use the Vite proxy, so we can use relative URLs
+// In production, use the configured API URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || ''
 
 // Custom error class
 export class ApiError extends Error {

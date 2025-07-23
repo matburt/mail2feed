@@ -2,8 +2,10 @@ use anyhow::{Result, Context};
 use imap::{Session, types::Fetch};
 use native_tls::{TlsConnector, TlsStream};
 use std::net::TcpStream;
+use std::time::Duration;
 use crate::db::models::ImapAccount;
 use chrono::{DateTime, Utc};
+use tracing::{debug, warn, error};
 
 pub struct ImapClient {
     account: ImapAccount,
@@ -17,19 +19,50 @@ impl ImapClient {
     }
     
     pub async fn test_connection(&self) -> Result<()> {
+        debug!("Testing connection to {}:{} (TLS: {})", 
+            self.account.host, self.account.port, self.account.use_tls);
+            
         if self.account.use_tls {
-            let mut session = self.connect_tls()?;
-            let _ = session.list(Some(""), Some("*"))?;
-            session.logout()?;
+            let mut session = self.connect_tls()
+                .context("Failed to establish TLS connection")?;
+            
+            // Try a NOOP command first to test basic connectivity
+            session.noop()
+                .context("Failed to execute NOOP command - server may not support IMAP properly")?;
+                
+            // Then try listing folders
+            let _ = session.list(Some(""), Some("*"))
+                .context("Failed to list folders - check if the server requires specific folder prefixes")?;
+                
+            // Logout (but don't fail the test if logout has issues)
+            if let Err(e) = session.logout() {
+                warn!("Logout failed (this is usually not critical): {}", e);
+            }
         } else {
-            let mut session = self.connect_plain()?;
-            let _ = session.list(Some(""), Some("*"))?;
-            session.logout()?;
+            let mut session = self.connect_plain()
+                .context("Failed to establish plain connection")?;
+                
+            // Try a NOOP command first to test basic connectivity
+            session.noop()
+                .context("Failed to execute NOOP command - server may not support IMAP properly")?;
+                
+            // Then try listing folders
+            let _ = session.list(Some(""), Some("*"))
+                .context("Failed to list folders - check if the server requires specific folder prefixes")?;
+                
+            // Logout (but don't fail the test if logout has issues)
+            if let Err(e) = session.logout() {
+                warn!("Logout failed (this is usually not critical): {}", e);
+            }
         }
+        
+        debug!("Connection test successful");
         Ok(())
     }
 
     fn connect_tls(&self) -> Result<Session<TlsStream<TcpStream>>> {
+        debug!("Creating TLS connection to {}:{}", self.account.host, self.account.port);
+        
         let tls = TlsConnector::builder()
             .danger_accept_invalid_certs(false)
             .build()
@@ -39,50 +72,122 @@ impl ImapClient {
             (self.account.host.as_str(), self.account.port as u16),
             &self.account.host,
             &tls,
-        ).context("Failed to connect to IMAP server with TLS")?;
+        ).map_err(|e| {
+            error!("TLS connection failed: {}", e);
+            anyhow::anyhow!("Failed to connect to IMAP server with TLS: {}. Check host, port, and TLS settings.", e)
+        })?;
+        
+        debug!("TLS connection established, attempting login");
         
         let session = client
             .login(&self.account.username, &self.account.password)
-            .map_err(|e| e.0)
-            .context("Failed to login to IMAP server")?;
+            .map_err(|e| {
+                error!("Login failed: {:?}", e.0);
+                anyhow::anyhow!("Failed to login: {}. Check username and password. If using Gmail, ensure you're using an app-specific password.", e.0)
+            })?;
             
+        debug!("Login successful");
         Ok(session)
     }
 
     fn connect_plain(&self) -> Result<Session<TcpStream>> {
+        debug!("Creating plain connection to {}:{}", self.account.host, self.account.port);
+        
         let stream = TcpStream::connect((self.account.host.as_str(), self.account.port as u16))
-            .context("Failed to connect to IMAP server")?;
+            .map_err(|e| {
+                error!("TCP connection failed: {}", e);
+                anyhow::anyhow!("Failed to connect to IMAP server: {}. Check host and port. Common ports: 143 (plain), 993 (TLS).", e)
+            })?;
+            
+        // Set timeout to avoid hanging on bad connections
+        stream.set_read_timeout(Some(Duration::from_secs(30)))
+            .context("Failed to set read timeout")?;
+        stream.set_write_timeout(Some(Duration::from_secs(30)))
+            .context("Failed to set write timeout")?;
             
         let client = imap::Client::new(stream);
         
+        debug!("Plain connection established, attempting login");
+        
         let session = client
             .login(&self.account.username, &self.account.password)
-            .map_err(|e| e.0)
-            .context("Failed to login to IMAP server")?;
+            .map_err(|e| {
+                error!("Login failed: {:?}", e.0);
+                anyhow::anyhow!("Failed to login: {}. Check username and password.", e.0)
+            })?;
             
+        debug!("Login successful");
         Ok(session)
     }
     
     pub fn list_folders(&self) -> Result<Vec<String>> {
+        debug!("Listing folders for account: {}", self.account.name);
+        
         let folders = if self.account.use_tls {
             let mut session = self.connect_tls()?;
-            let names = session.list(Some(""), Some("*"))?;
+            
+            // Try different folder listing approaches
+            let names = match session.list(Some(""), Some("*")) {
+                Ok(names) => names,
+                Err(e) => {
+                    warn!("Failed to list with empty prefix, trying INBOX prefix: {}", e);
+                    // Some servers require specific prefixes
+                    match session.list(Some("INBOX"), Some("*")) {
+                        Ok(names) => names,
+                        Err(e) => {
+                            warn!("Failed to list with INBOX prefix, trying without prefix: {}", e);
+                            session.list(None, Some("*"))
+                                .context("Failed to list folders with any prefix combination")?
+                        }
+                    }
+                }
+            };
+            
             let folders: Vec<String> = names
                 .iter()
                 .map(|n| n.name().to_string())
                 .collect();
-            session.logout()?;
+                
+            debug!("Found {} folders", folders.len());
+            if let Err(e) = session.logout() {
+                warn!("Logout failed after listing folders: {}", e);
+            }
             folders
         } else {
             let mut session = self.connect_plain()?;
-            let names = session.list(Some(""), Some("*"))?;
+            
+            // Try different folder listing approaches
+            let names = match session.list(Some(""), Some("*")) {
+                Ok(names) => names,
+                Err(e) => {
+                    warn!("Failed to list with empty prefix, trying INBOX prefix: {}", e);
+                    // Some servers require specific prefixes
+                    match session.list(Some("INBOX"), Some("*")) {
+                        Ok(names) => names,
+                        Err(e) => {
+                            warn!("Failed to list with INBOX prefix, trying without prefix: {}", e);
+                            session.list(None, Some("*"))
+                                .context("Failed to list folders with any prefix combination")?
+                        }
+                    }
+                }
+            };
+            
             let folders: Vec<String> = names
                 .iter()
                 .map(|n| n.name().to_string())
                 .collect();
-            session.logout()?;
+                
+            debug!("Found {} folders", folders.len());
+            if let Err(e) = session.logout() {
+                warn!("Logout failed after listing folders: {}", e);
+            }
             folders
         };
+        
+        if folders.is_empty() {
+            warn!("No folders found - this might indicate a configuration issue");
+        }
         
         Ok(folders)
     }
