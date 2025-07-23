@@ -3,4 +3,4 @@ file = "src/db/schema.rs"
 custom_type_derives = ["diesel::query_builder::QueryId"]
 
 [migrations_directory]
-file = "migrations"
+dir = "migrations"
