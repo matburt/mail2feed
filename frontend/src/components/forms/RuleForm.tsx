@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { rulesApi } from '../../api/rules'
 import { accountsApi } from '../../api/accounts'
+import { useFolderLoader } from '../../hooks/useFolderLoader'
 import type { EmailRule, CreateEmailRuleRequest, UpdateEmailRuleRequest, ImapAccount } from '../../types'
 
 interface RuleFormProps {
@@ -26,6 +27,26 @@ export default function RuleForm({ rule, onSubmit, onCancel }: RuleFormProps) {
     label: rule?.label || '',
     is_active: rule?.is_active ?? true
   })
+
+  // State for manual folder input
+  const [useCustomFolder, setUseCustomFolder] = useState(false)
+  const [customFolder, setCustomFolder] = useState('')
+
+  // Load folders for the selected IMAP account
+  const { folders, isLoading: foldersLoading, error: foldersError, refetch: refetchFolders } = useFolderLoader(
+    formData.imap_account_id || undefined
+  )
+
+  // Check if current folder is custom (not in the folders list)
+  useEffect(() => {
+    if (formData.folder && !folders.includes(formData.folder)) {
+      setUseCustomFolder(true)
+      setCustomFolder(formData.folder)
+    } else {
+      setUseCustomFolder(false)
+      setCustomFolder('')
+    }
+  }, [formData.folder, folders])
 
   useEffect(() => {
     const loadAccounts = async () => {
@@ -100,13 +121,13 @@ export default function RuleForm({ rule, onSubmit, onCancel }: RuleFormProps) {
     try {
       let savedRule: EmailRule
       
-      // Prepare data with null values for empty strings
+      // Prepare data with undefined values for empty strings
       const requestData = {
         ...formData,
-        to_address: formData.to_address.trim() || null,
-        from_address: formData.from_address.trim() || null,
-        subject_contains: formData.subject_contains.trim() || null,
-        label: formData.label.trim() || null
+        to_address: formData.to_address.trim() || undefined,
+        from_address: formData.from_address.trim() || undefined,
+        subject_contains: formData.subject_contains.trim() || undefined,
+        label: formData.label.trim() || undefined
       }
       
       if (rule) {
@@ -161,15 +182,34 @@ export default function RuleForm({ rule, onSubmit, onCancel }: RuleFormProps) {
     }
   }
 
-  const commonFolders = [
-    'INBOX',
-    'Sent',
-    'Drafts',
-    'Spam',
-    'Trash',
-    'Archive',
-    'Important'
-  ]
+  // Handle custom folder toggle
+  const handleCustomFolderToggle = () => {
+    if (useCustomFolder) {
+      // Switching back to dropdown - reset to INBOX if custom folder isn't in list
+      setUseCustomFolder(false)
+      setCustomFolder('')
+      if (!folders.includes(formData.folder)) {
+        setFormData(prev => ({ ...prev, folder: 'INBOX' }))
+      }
+    } else {
+      // Switching to custom input
+      setUseCustomFolder(true)
+      setCustomFolder(formData.folder)
+    }
+  }
+
+  // Handle custom folder input change
+  const handleCustomFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value
+    setCustomFolder(value)
+    setFormData(prev => ({ ...prev, folder: value }))
+    
+    // Clear error when user starts typing
+    if (errors.folder) {
+      setErrors(prev => ({ ...prev, folder: '' }))
+    }
+  }
+
 
   if (accounts.length === 0 && !errors.accounts) {
     return (
@@ -266,29 +306,84 @@ export default function RuleForm({ rule, onSubmit, onCancel }: RuleFormProps) {
 
         {/* Folder */}
         <div className="sm:col-span-3">
-          <label htmlFor="folder" className="block text-sm font-medium text-gray-700">
-            Email Folder
-          </label>
-          <div className="mt-1">
-            <select
-              name="folder"
-              id="folder"
-              value={formData.folder}
-              onChange={handleChange}
-              className={`block w-full shadow-sm sm:text-sm rounded-md ${
-                errors.folder 
-                  ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
-                  : 'border-gray-300 focus:ring-primary-500 focus:border-primary-500'
-              }`}
+          <div className="flex items-center justify-between">
+            <label htmlFor="folder" className="block text-sm font-medium text-gray-700">
+              Email Folder
+              {foldersLoading && (
+                <span className="ml-2 text-xs text-gray-500">Loading folders...</span>
+              )}
+            </label>
+            <button
+              type="button"
+              onClick={handleCustomFolderToggle}
+              className="text-xs text-primary-600 hover:text-primary-700 underline"
             >
-              {commonFolders.map(folder => (
-                <option key={folder} value={folder}>
-                  {folder}
-                </option>
-              ))}
-            </select>
+              {useCustomFolder ? 'Use dropdown' : 'Enter custom folder'}
+            </button>
+          </div>
+          
+          <div className="mt-1">
+            {useCustomFolder ? (
+              <input
+                type="text"
+                name="folder"
+                id="folder"
+                value={customFolder}
+                onChange={handleCustomFolderChange}
+                placeholder="Enter folder name (e.g., INBOX/Lists)"
+                className={`block w-full shadow-sm sm:text-sm rounded-md ${
+                  errors.folder 
+                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                    : 'border-gray-300 focus:ring-primary-500 focus:border-primary-500'
+                }`}
+              />
+            ) : (
+              <select
+                name="folder"
+                id="folder"
+                value={formData.folder}
+                onChange={handleChange}
+                disabled={foldersLoading}
+                className={`block w-full shadow-sm sm:text-sm rounded-md ${
+                  errors.folder 
+                    ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                    : 'border-gray-300 focus:ring-primary-500 focus:border-primary-500'
+                } ${foldersLoading ? 'bg-gray-50 cursor-wait' : ''}`}
+              >
+                {folders.map(folder => (
+                  <option key={folder} value={folder}>
+                    {folder}
+                  </option>
+                ))}
+              </select>
+            )}
+            
+            {/* Error state with retry button */}
+            {foldersError && !useCustomFolder && (
+              <div className="mt-2 flex items-center justify-between">
+                <p className="text-sm text-amber-600 flex-1">
+                  {foldersError} (using default folders)
+                </p>
+                <button
+                  type="button"
+                  onClick={refetchFolders}
+                  className="ml-2 text-xs text-primary-600 hover:text-primary-700 underline"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            
+            {/* Regular validation error */}
             {errors.folder && (
               <p className="mt-2 text-sm text-red-600">{errors.folder}</p>
+            )}
+            
+            {/* Helper text for custom folder */}
+            {useCustomFolder && (
+              <p className="mt-2 text-sm text-gray-500">
+                Enter the exact folder name as it appears in your email client. Use forward slashes for nested folders (e.g., "INBOX/Lists").
+              </p>
             )}
           </div>
         </div>

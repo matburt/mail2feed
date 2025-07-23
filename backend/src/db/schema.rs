@@ -2,7 +2,7 @@
 
 diesel::table! {
     email_rules (id) {
-        id -> Nullable<Text>,
+        id -> Text,
         name -> Text,
         imap_account_id -> Text,
         folder -> Text,
@@ -18,7 +18,7 @@ diesel::table! {
 
 diesel::table! {
     feed_items (id) {
-        id -> Nullable<Text>,
+        id -> Text,
         feed_id -> Text,
         title -> Text,
         description -> Nullable<Text>,
@@ -35,7 +35,7 @@ diesel::table! {
 
 diesel::table! {
     feeds (id) {
-        id -> Nullable<Text>,
+        id -> Text,
         title -> Text,
         description -> Nullable<Text>,
         link -> Nullable<Text>,
@@ -49,7 +49,7 @@ diesel::table! {
 
 diesel::table! {
     imap_accounts (id) {
-        id -> Nullable<Text>,
+        id -> Text,
         name -> Text,
         host -> Text,
         port -> Integer,
