@@ -18,6 +18,7 @@ pub enum ControlMessage {
     /// Resume the background service
     Resume,
     /// Reload configuration
+    #[allow(dead_code)]
     ReloadConfig,
     /// Get current status (response sent via response channel)
     GetStatus { response_tx: mpsc::UnboundedSender<ServiceStatusResponse> },
@@ -77,18 +78,21 @@ impl ServiceController {
     }
     
     /// Pause the background service
+    #[allow(dead_code)]
     pub async fn pause(&self) -> Result<(), String> {
         info!("Pausing background service");
         self.send_command(ControlMessage::Pause).await
     }
     
     /// Resume the background service
+    #[allow(dead_code)]
     pub async fn resume(&self) -> Result<(), String> {
         info!("Resuming background service");
         self.send_command(ControlMessage::Resume).await
     }
     
     /// Get service status
+    #[allow(dead_code)]
     pub async fn get_status(&self) -> Result<ServiceStatusResponse, String> {
         let (response_tx, mut response_rx) = mpsc::unbounded_channel();
         
@@ -106,6 +110,7 @@ impl ServiceController {
     }
     
     /// Shutdown the background service
+    #[allow(dead_code)]
     pub async fn shutdown(&self) -> Result<(), String> {
         info!("Requesting background service shutdown");
         self.send_command(ControlMessage::Shutdown).await

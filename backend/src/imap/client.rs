@@ -1,25 +1,25 @@
 use anyhow::{Result, Context};
-use async_imap::{Session, types::Fetch};
 use crate::db::models::ImapAccount;
-use crate::imap::protocol_compat::ProtocolCompat;
-use crate::imap::crlf_wrapper::CrlfStreamWrapper;
 use chrono::{DateTime, Utc};
 use tracing::{debug, info, warn, error};
-use futures::StreamExt;
-use futures::{AsyncRead, AsyncWrite};
-use async_native_tls::{TlsStream, TlsConnector};
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use native_tls::TlsConnector;
+use std::net::TcpStream;
 
-// Enhanced error handling for async-imap specific errors
+// Enhanced error handling for IMAP specific errors
 #[derive(Debug)]
 pub enum ImapClientError {
     ConnectionFailed { host: String, port: u16, source: Box<dyn std::error::Error + Send + Sync> },
     TlsHandshakeFailed { host: String, source: Box<dyn std::error::Error + Send + Sync> },
     AuthenticationFailed { username: String, source: String },
+    #[allow(dead_code)]
     FolderNotFound { folder: String, available_folders: Vec<String> },
+    #[allow(dead_code)]
     FolderAccessDenied { folder: String },
+    #[allow(dead_code)]
     FetchOperationFailed { folder: String, sequence: String, strategy: String },
+    #[allow(dead_code)]
     ProtocolError { operation: String, details: String },
+    #[allow(dead_code)]
     ServerCompatibilityIssue { server: String, operation: String },
 }
 
@@ -64,8 +64,6 @@ impl std::error::Error for ImapClientError {
     }
 }
 
-// ImapClientError automatically converts to anyhow::Error via the StdError trait
-
 pub struct ImapClient {
     account: ImapAccount,
 }
@@ -78,96 +76,81 @@ impl ImapClient {
     }
     
     pub async fn test_connection(&self) -> Result<()> {
-        debug!("Testing connection to {}:{} (TLS: {})", 
-            self.account.host, self.account.port, self.account.use_tls);
-            
-        if self.account.use_tls {
-            let mut session = self.connect_tls().await
-                .context("Failed to establish TLS connection")?;
-            
-            // Try a NOOP command first to test basic connectivity
-            session.noop().await
-                .context("Failed to execute NOOP command - server may not support IMAP properly")?;
-                
-            // Then try listing folders
-            let _ = session.list(Some(""), Some("*")).await
-                .context("Failed to list folders - check if the server requires specific folder prefixes")?;
-                
-            // Logout (but don't fail the test if logout has issues)
-            if let Err(e) = session.logout().await {
-                warn!("Logout failed (this is usually not critical): {}", e);
-            }
-        } else {
-            let mut session = self.connect_plain().await
-                .context("Failed to establish plain connection")?;
-                
-            // Try a NOOP command first to test basic connectivity
-            session.noop().await
-                .context("Failed to execute NOOP command - server may not support IMAP properly")?;
-                
-            // Then try listing folders
-            let _ = session.list(Some(""), Some("*")).await
-                .context("Failed to list folders - check if the server requires specific folder prefixes")?;
-                
-            // Logout (but don't fail the test if logout has issues)
-            if let Err(e) = session.logout().await {
-                warn!("Logout failed (this is usually not critical): {}", e);
-            }
-        }
+        let account = self.account.clone();
         
-        debug!("Connection test successful");
-        Ok(())
+        tokio::task::spawn_blocking(move || {
+            debug!("Testing connection to {}:{} (TLS: {})", 
+                account.host, account.port, account.use_tls);
+                
+            if account.use_tls {
+                let mut session = Self::connect_tls_sync(&account)?;
+                
+                // Try a NOOP command first to test basic connectivity
+                session.noop()
+                    .context("Failed to execute NOOP command - server may not support IMAP properly")?;
+                    
+                // Then try listing folders
+                let _ = session.list(Some(""), Some("*"))
+                    .context("Failed to list folders - check if the server requires specific folder prefixes")?;
+                    
+                // Logout (but don't fail the test if logout has issues)
+                if let Err(e) = session.logout() {
+                    warn!("Logout failed (this is usually not critical): {}", e);
+                }
+            } else {
+                let mut session = Self::connect_plain_sync(&account)?;
+                    
+                // Try a NOOP command first to test basic connectivity
+                session.noop()
+                    .context("Failed to execute NOOP command - server may not support IMAP properly")?;
+                    
+                // Then try listing folders
+                let _ = session.list(Some(""), Some("*"))
+                    .context("Failed to list folders - check if the server requires specific folder prefixes")?;
+                    
+                // Logout (but don't fail the test if logout has issues)
+                if let Err(e) = session.logout() {
+                    warn!("Logout failed (this is usually not critical): {}", e);
+                }
+            }
+            
+            debug!("Connection test successful");
+            Ok(())
+        })
+        .await
+        .unwrap()
     }
 
-    async fn connect_tls(&self) -> Result<Session<CrlfStreamWrapper<TlsStream<tokio_util::compat::Compat<tokio::net::TcpStream>>>>> {
-        debug!("Creating TLS connection to {}:{}", self.account.host, self.account.port);
+    fn connect_tls_sync(account: &ImapAccount) -> Result<imap::Session<native_tls::TlsStream<TcpStream>>> {
+        debug!("Creating TLS connection to {}:{}", account.host, account.port);
         
-        // Create async TLS connector
-        let tls_connector = TlsConnector::default();
-        
-        // Connect to TCP stream first and make it compatible
-        let tcp_stream = tokio::net::TcpStream::connect((self.account.host.as_str(), self.account.port as u16))
-            .await
+        let tls = TlsConnector::builder().build()
             .map_err(|e| {
-                error!("TLS TCP connection failed: {}", e);
-                ImapClientError::ConnectionFailed {
-                    host: self.account.host.clone(),
-                    port: self.account.port as u16,
-                    source: Box::new(e),
-                }
-            })?
-            .compat();
-            
-        // Wrap with TLS
-        let tls_stream = tls_connector.connect(&self.account.host, tcp_stream)
-            .await
-            .map_err(|e| {
-                error!("TLS handshake failed: {}", e);
+                error!("TLS connector creation failed: {}", e);
                 ImapClientError::TlsHandshakeFailed {
-                    host: self.account.host.clone(),
+                    host: account.host.clone(),
                     source: Box::new(e),
                 }
             })?;
             
-        // Always use CRLF wrapper but configure it appropriately
-        let wrapped_stream = if ProtocolCompat::is_protonmail_bridge(&self.account.host, self.account.port as u16) {
-            info!("Detected ProtonMail Bridge - applying CRLF compatibility wrapper");
-            CrlfStreamWrapper::new(tls_stream)
-        } else {
-            CrlfStreamWrapper::new_passthrough(tls_stream)
-        };
-        
-        let client = async_imap::Client::new(wrapped_stream);
-        
+        let client = imap::connect_starttls((account.host.as_str(), account.port as u16), &account.host, &tls)
+            .map_err(|e| {
+                error!("TLS connection failed: {}", e);
+                ImapClientError::ConnectionFailed {
+                    host: account.host.clone(),
+                    port: account.port as u16,
+                    source: Box::new(e),
+                }
+            })?;
+            
         debug!("TLS connection established, attempting login");
         
         let session = client
-            .login(&self.account.username, &self.account.password)
-            .await
+            .login(&account.username, &account.password)
             .map_err(|e| {
                 error!("Login failed: {:?}", e.0);
                 ImapClientError::AuthenticationFailed {
-                    username: self.account.username.clone(),
+                    username: account.username.clone(),
                     source: format!("{:?}. Check username and password. If using Gmail, ensure you're using an app-specific password.", e.0),
                 }
             })?;
@@ -176,40 +159,30 @@ impl ImapClient {
         Ok(session)
     }
 
-    async fn connect_plain(&self) -> Result<Session<CrlfStreamWrapper<tokio_util::compat::Compat<tokio::net::TcpStream>>>> {
-        debug!("Creating plain connection to {}:{}", self.account.host, self.account.port);
+    fn connect_plain_sync(account: &ImapAccount) -> Result<imap::Session<TcpStream>> {
+        debug!("Creating plain connection to {}:{}", account.host, account.port);
         
-        let stream = tokio::net::TcpStream::connect((self.account.host.as_str(), self.account.port as u16))
-            .await
+        // For plain IMAP connections, we need to construct the client manually
+        let tcp_stream = TcpStream::connect((account.host.as_str(), account.port as u16))
             .map_err(|e| {
                 error!("TCP connection failed: {}", e);
                 ImapClientError::ConnectionFailed {
-                    host: self.account.host.clone(),
-                    port: self.account.port as u16,
+                    host: account.host.clone(),
+                    port: account.port as u16,
                     source: Box::new(e),
                 }
-            })?
-            .compat();
+            })?;
             
-        // Always use CRLF wrapper but configure it appropriately
-        let wrapped_stream = if ProtocolCompat::is_protonmail_bridge(&self.account.host, self.account.port as u16) {
-            info!("Detected ProtonMail Bridge - applying CRLF compatibility wrapper for plain connection");
-            CrlfStreamWrapper::new(stream)
-        } else {
-            CrlfStreamWrapper::new_passthrough(stream)
-        };
-        
-        let client = async_imap::Client::new(wrapped_stream);
-        
+        let client = imap::Client::new(tcp_stream);
+            
         debug!("Plain connection established, attempting login");
         
         let session = client
-            .login(&self.account.username, &self.account.password)
-            .await
+            .login(&account.username, &account.password)
             .map_err(|e| {
                 error!("Login failed: {:?}", e.0);
                 ImapClientError::AuthenticationFailed {
-                    username: self.account.username.clone(),
+                    username: account.username.clone(),
                     source: format!("{:?}. Check username and password.", e.0),
                 }
             })?;
@@ -221,30 +194,35 @@ impl ImapClient {
     pub async fn list_folders(&self) -> Result<Vec<String>> {
         debug!("Listing folders for account: {}", self.account.name);
         
-        let folders = if self.account.use_tls {
-            let mut session = self.connect_tls().await?;
-            self.list_folders_with_session(&mut session).await?
-        } else {
-            let mut session = self.connect_plain().await?;
-            self.list_folders_with_session(&mut session).await?
-        };
+        let account = self.account.clone();
         
-        if folders.is_empty() {
-            warn!("No folders found - this might indicate a configuration issue");
-        }
-        
-        Ok(folders)
+        tokio::task::spawn_blocking(move || {
+            let folders = if account.use_tls {
+                let mut session = Self::connect_tls_sync(&account)?;
+                Self::list_folders_with_session(&mut session)?
+            } else {
+                let mut session = Self::connect_plain_sync(&account)?;
+                Self::list_folders_with_session(&mut session)?
+            };
+            
+            if folders.is_empty() {
+                warn!("No folders found - this might indicate a configuration issue");
+            }
+            
+            Ok(folders)
+        })
+        .await
+        .unwrap()
     }
     
-    // Helper method to list folders with a given session to avoid borrow checker issues
-    async fn list_folders_with_session<T>(&self, session: &mut async_imap::Session<CrlfStreamWrapper<T>>) -> Result<Vec<String>>
+    fn list_folders_with_session<T>(session: &mut imap::Session<T>) -> Result<Vec<String>>
     where 
-        T: AsyncRead + AsyncWrite + Unpin + Send + std::fmt::Debug
+        T: std::io::Read + std::io::Write
     {
         // Try first approach
-        if let Ok(folders) = self.try_list_folders_empty(session).await {
+        if let Ok(folders) = Self::try_list_folders_empty(session) {
             if !folders.is_empty() {
-                if let Err(e) = session.logout().await {
+                if let Err(e) = session.logout() {
                     warn!("Logout failed after listing folders: {}", e);
                 }
                 return Ok(folders);
@@ -252,9 +230,9 @@ impl ImapClient {
         }
         
         // Try second approach
-        if let Ok(folders) = self.try_list_folders_inbox(session).await {
+        if let Ok(folders) = Self::try_list_folders_inbox(session) {
             if !folders.is_empty() {
-                if let Err(e) = session.logout().await {
+                if let Err(e) = session.logout() {
                     warn!("Logout failed after listing folders: {}", e);
                 }
                 return Ok(folders);
@@ -262,404 +240,372 @@ impl ImapClient {
         }
         
         // Try third approach
-        if let Ok(folders) = self.try_list_folders_none(session).await {
-            if let Err(e) = session.logout().await {
+        if let Ok(folders) = Self::try_list_folders_none(session) {
+            if let Err(e) = session.logout() {
                 warn!("Logout failed after listing folders: {}", e);
             }
             return Ok(folders);
         }
         
-        if let Err(e) = session.logout().await {
+        if let Err(e) = session.logout() {
             warn!("Logout failed after listing folders: {}", e);
         }
         
         Err(anyhow::anyhow!("Failed to list folders with any prefix combination"))
     }
     
-    async fn try_list_folders_empty<T>(&self, session: &mut async_imap::Session<CrlfStreamWrapper<T>>) -> Result<Vec<String>>
+    fn try_list_folders_empty<T>(session: &mut imap::Session<T>) -> Result<Vec<String>>
     where 
-        T: AsyncRead + AsyncWrite + Unpin + Send + std::fmt::Debug
+        T: std::io::Read + std::io::Write
     {
-        let names_stream = session.list(Some(""), Some("*")).await?;
-        let names: Vec<_> = names_stream.collect().await;
+        let names = session.list(Some(""), Some("*"))?;
         let folders: Vec<String> = names
             .into_iter()
-            .filter_map(|result| match result {
-                Ok(name) => Some(name.name().to_string()),
-                Err(e) => {
-                    warn!("Error parsing folder name: {}", e);
-                    None
-                }
-            })
+            .map(|name| name.name().to_string())
             .collect();
         debug!("Found {} folders with empty prefix", folders.len());
         Ok(folders)
     }
     
-    async fn try_list_folders_inbox<T>(&self, session: &mut async_imap::Session<CrlfStreamWrapper<T>>) -> Result<Vec<String>>
+    fn try_list_folders_inbox<T>(session: &mut imap::Session<T>) -> Result<Vec<String>>
     where 
-        T: AsyncRead + AsyncWrite + Unpin + Send + std::fmt::Debug
+        T: std::io::Read + std::io::Write
     {
         warn!("Failed to list with empty prefix, trying INBOX prefix");
-        let names_stream = session.list(Some("INBOX"), Some("*")).await?;
-        let names: Vec<_> = names_stream.collect().await;
+        let names = session.list(Some("INBOX"), Some("*"))?;
         let folders: Vec<String> = names
             .into_iter()
-            .filter_map(|result| match result {
-                Ok(name) => Some(name.name().to_string()),
-                Err(e) => {
-                    warn!("Error parsing folder name: {}", e);
-                    None
-                }
-            })
+            .map(|name| name.name().to_string())
             .collect();
         debug!("Found {} folders with INBOX prefix", folders.len());
         Ok(folders)
     }
     
-    async fn try_list_folders_none<T>(&self, session: &mut async_imap::Session<CrlfStreamWrapper<T>>) -> Result<Vec<String>>
+    fn try_list_folders_none<T>(session: &mut imap::Session<T>) -> Result<Vec<String>>
     where 
-        T: AsyncRead + AsyncWrite + Unpin + Send + std::fmt::Debug
+        T: std::io::Read + std::io::Write
     {
         warn!("Failed to list with INBOX prefix, trying without prefix");
-        let names_stream = session.list(None, Some("*")).await?;
-        let names: Vec<_> = names_stream.collect().await;
+        let names = session.list(None, Some("*"))?;
         let folders: Vec<String> = names
             .into_iter()
-            .filter_map(|result| match result {
-                Ok(name) => Some(name.name().to_string()),
-                Err(e) => {
-                    warn!("Error parsing folder name: {}", e);
-                    None
-                }
-            })
+            .map(|name| name.name().to_string())
             .collect();
         debug!("Found {} folders with no prefix", folders.len());
         Ok(folders)
     }
     
     pub async fn fetch_emails_from_folder(&self, folder: &str, limit: Option<u32>) -> Result<Vec<Email>> {
-        if self.account.use_tls {
-            self.fetch_emails_tls(folder, limit).await
-        } else {
-            self.fetch_emails_plain(folder, limit).await
-        }
+        debug!("Fetching emails from folder '{}' with limit {:?} (TLS: {})", folder, limit, self.account.use_tls);
+        
+        let account = self.account.clone();
+        let folder = folder.to_string();
+        
+        tokio::task::spawn_blocking(move || {
+            let result = if account.use_tls {
+                Self::fetch_emails_tls_sync(&account, &folder, limit)
+            } else {
+                Self::fetch_emails_plain_sync(&account, &folder, limit)
+            };
+            
+            match &result {
+                Ok(emails) => info!("fetch_emails_from_folder returned {} emails", emails.len()),
+                Err(e) => error!("fetch_emails_from_folder failed: {}", e),
+            }
+            
+            result
+        })
+        .await
+        .unwrap()
     }
     
-    // Helper method to try multiple IMAP fetch strategies with fallback
-    async fn fetch_messages_with_fallback<T>(&self, session: &mut async_imap::Session<CrlfStreamWrapper<T>>, sequence_set: &str) -> Result<Vec<async_imap::types::Fetch>>
-    where 
-        T: AsyncRead + AsyncWrite + Unpin + Send + std::fmt::Debug
-    {
-        // Check if this is ProtonMail Bridge and use special handling
-        if ProtocolCompat::is_protonmail_bridge(&self.account.host, self.account.port as u16) {
-            info!("Detected ProtonMail Bridge connection, using compatibility mode");
-            
-            // First, gather debugging information
-            if let Err(e) = ProtocolCompat::debug_server_info(session).await {
-                warn!("Failed to gather server debug info: {}", e);
-            }
-            
-            // Try ProtonMail-specific fetch strategies
-            return ProtocolCompat::protonmail_compatible_fetch(session, sequence_set).await;
-        }
-        // Strategy 1: Try headers only first (most compatible)
-        info!("Attempting fetch strategy 1: Headers only");
-        match session.fetch(sequence_set, "RFC822.HEADER FLAGS UID").await {
-            Ok(mut stream) => {
-                // Manually collect with timeout per item to avoid hanging
-                let mut messages: Vec<async_imap::types::Fetch> = Vec::new();
-                let timeout_duration = std::time::Duration::from_secs(5);
+    fn fetch_emails_tls_sync(account: &ImapAccount, folder: &str, limit: Option<u32>) -> Result<Vec<Email>> {
+        let mut session = Self::connect_tls_sync(account)?;
+        
+        // First, list available folders for debugging
+        info!("Listing available folders for verification");
+        match session.list(Some(""), Some("*")) {
+            Ok(folders) => {
+                let folder_names: Vec<String> = folders.iter().map(|f| f.name().to_string()).collect();
+                info!("Available folders: {:?}", folder_names);
                 
-                info!("Starting manual stream collection with per-item timeout");
-                loop {
-                    match tokio::time::timeout(timeout_duration, stream.next()).await {
-                        Ok(Some(Ok(message))) => {
-                            messages.push(message);
-                            debug!("Collected message {}", messages.len());
-                        }
-                        Ok(Some(Err(e))) => {
-                            warn!("Error in stream item: {}", e);
-                            break;
-                        }
-                        Ok(None) => {
-                            info!("Stream ended normally, collected {} messages", messages.len());
-                            break;
-                        }
-                        Err(_) => {
-                            warn!("Stream item timed out after 5 seconds, collected {} messages so far", messages.len());
-                            break;
-                        }
-                    }
-                }
-                
-                if !messages.is_empty() {
-                    info!("Successfully fetched {} messages with headers only", messages.len());
-                    return Ok(messages);
-                } else {
-                    warn!("Strategy 1 returned no valid messages");
-                }
-            },
-            Err(e) => {
-                warn!("Strategy 1 failed: {}", e);
-            }
-        }
-        
-        // Strategy 2: Try with BODY.PEEK instead of RFC822.TEXT (read-only access)
-        info!("Attempting fetch strategy 2: Headers with BODY.PEEK");
-        match session.fetch(sequence_set, "RFC822.HEADER BODY.PEEK[] FLAGS UID").await {
-            Ok(stream) => {
-                let timeout_duration = std::time::Duration::from_secs(30);
-                match tokio::time::timeout(timeout_duration, stream.collect::<Vec<_>>()).await {
-                    Ok(results) => {
-                        let messages: Vec<_> = results.into_iter().filter_map(|r| r.ok()).collect();
-                        if !messages.is_empty() {
-                            info!("Successfully fetched {} messages with BODY.PEEK", messages.len());
-                            return Ok(messages);
-                        } else {
-                            warn!("Strategy 2 returned no valid messages");
-                        }
-                    }
-                    Err(_) => {
-                        warn!("Strategy 2 timed out after 30 seconds");
-                    }
-                }
-            },
-            Err(e) => {
-                warn!("Strategy 2 failed: {}", e);
-            }
-        }
-        
-        // Strategy 3: Try basic FLAGS only
-        info!("Attempting fetch strategy 3: FLAGS only");
-        match session.fetch(sequence_set, "FLAGS UID").await {
-            Ok(stream) => {
-                let timeout_duration = std::time::Duration::from_secs(30);
-                match tokio::time::timeout(timeout_duration, stream.collect::<Vec<_>>()).await {
-                    Ok(results) => {
-                        let messages: Vec<_> = results.into_iter().filter_map(|r| r.ok()).collect();
-                        if !messages.is_empty() {
-                            info!("Successfully fetched {} messages with FLAGS only", messages.len());
-                            return Ok(messages);
-                        } else {
-                            warn!("Strategy 3 returned no valid messages");
-                        }
-                    }
-                    Err(_) => {
-                        warn!("Strategy 3 timed out after 30 seconds");
-                    }
-                }
-            },
-            Err(e) => {
-                warn!("Strategy 3 failed: {}", e);
-            }
-        }
-        
-        // Strategy 4: Try fetching individual messages by UID (most compatible but slower)
-        info!("Attempting fetch strategy 4: Individual UID fetch");
-        // First get the UIDs using SEARCH ALL command
-        match session.search("ALL").await {
-            Ok(uids) => {
-                if !uids.is_empty() {
-                    // Take only the first few UIDs to avoid overwhelming the server
-                    let limited_uids: Vec<u32> = uids.into_iter().take(5).collect();
-                    info!("Found {} UIDs, fetching first {} individually", limited_uids.len(), limited_uids.len());
+                // Check if our target folder exists (case-insensitive)
+                let folder_exists = folder_names.iter().any(|f| f.eq_ignore_ascii_case(folder));
+                if !folder_exists {
+                    warn!("Target folder '{}' not found in available folders. Available: {:?}", folder, folder_names);
                     
-                    // Try to fetch just one UID to test
-                    let first_uid = limited_uids[0];
-                    match session.uid_fetch(format!("{}", first_uid), "FLAGS UID").await {
-                        Ok(stream) => {
-                            let timeout_duration = std::time::Duration::from_secs(30);
-                            match tokio::time::timeout(timeout_duration, stream.collect::<Vec<_>>()).await {
-                                Ok(results) => {
-                                    let messages: Vec<_> = results.into_iter().filter_map(|r| r.ok()).collect();
-                                    if !messages.is_empty() {
-                                        info!("Successfully fetched message UID {} with individual fetch", first_uid);
-                                        return Ok(messages);
-                                    } else {
-                                        warn!("Strategy 4 returned no valid messages");
+                    // Try to find similar folders
+                    let similar: Vec<String> = folder_names.iter()
+                        .filter(|f| f.to_lowercase().contains(&folder.to_lowercase().replace("folders/", "")))
+                        .cloned().collect();
+                    if !similar.is_empty() {
+                        info!("Found potentially similar folders: {:?}", similar);
+                    }
+                }
+            },
+            Err(e) => {
+                warn!("Could not list folders: {}", e);
+            }
+        }
+        
+        // Select the folder
+        info!("Attempting to select folder: '{}'", folder);
+        let _mailbox = match session.select(folder) {
+            Ok(mailbox) => {
+                info!("Successfully selected folder '{}', {} messages found", folder, mailbox.exists);
+                mailbox
+            },
+            Err(e) => {
+                error!("Failed to select folder '{}': {}", folder, e);
+                
+                // Try alternative folder names for ProtonMail Bridge
+                let alternatives = vec![
+                    folder.replace("Folders/", ""),  // Remove "Folders/" prefix
+                    folder.replace("Folders/", "").replace("/", "."), // Use dots instead of slashes
+                    format!("INBOX.{}", folder.replace("Folders/", "").replace("/", ".")), // INBOX prefix
+                    "INBOX".to_string(), // Fall back to INBOX
+                ];
+                
+                for alt_folder in alternatives {
+                    info!("Trying alternative folder name: '{}'", alt_folder);
+                    match session.select(&alt_folder) {
+                        Ok(mailbox) => {
+                            warn!("Successfully selected alternative folder '{}' instead of '{}', {} messages found", alt_folder, folder, mailbox.exists);
+                            return Self::fetch_from_selected_folder(session, &alt_folder, limit);
+                        },
+                        Err(e2) => {
+                            debug!("Alternative folder '{}' also failed: {}", alt_folder, e2);
+                        }
+                    }
+                }
+                
+                return Err(anyhow::anyhow!("Failed to select folder '{}' and all alternatives: {}", folder, e));
+            }
+        };
+        
+        Self::fetch_from_selected_folder(session, folder, limit)
+    }
+    
+    fn fetch_emails_plain_sync(account: &ImapAccount, folder: &str, limit: Option<u32>) -> Result<Vec<Email>> {
+        let session = Self::connect_plain_sync(account)?;
+        
+        Self::fetch_from_selected_folder(session, folder, limit)
+    }
+    
+    
+    fn fetch_from_selected_folder<T>(mut session: imap::Session<T>, folder: &str, limit: Option<u32>) -> Result<Vec<Email>>
+    where
+        T: std::io::Read + std::io::Write
+    {
+        let mailbox = session.examine(folder)?; // Use EXAMINE instead of SELECT for read-only access
+        let total_messages = mailbox.exists;
+        
+        if total_messages == 0 {
+            if let Err(e) = session.logout() {
+                warn!("Logout failed (this is usually not critical): {}", e);
+            }
+            return Ok(vec![]);
+        }
+        
+        // Use all messages or respect the provided limit
+        let fetch_count = limit.unwrap_or(total_messages).min(total_messages);
+        
+        info!("Fetching messages: limit={:?}, total_messages={}", limit, total_messages);
+        
+        // Use ProtonMail Bridge compatible approach: get UIDs first, then fetch headers
+        info!("Step 1: Getting UIDs using UID SEARCH ALL");
+        let mut emails = Vec::new();
+        
+        // Get all UIDs first
+        match session.uid_search("ALL") {
+            Ok(uids) => {
+                info!("Found {} UIDs total", uids.len());
+                
+                // Sort UIDs and take the last N (most recent messages)
+                let mut sorted_uids: Vec<u32> = uids.into_iter().collect();
+                sorted_uids.sort_unstable();
+                
+                let uids_to_fetch: Vec<u32> = sorted_uids
+                    .into_iter()
+                    .rev() // Get newest first (highest UIDs)
+                    .take(fetch_count as usize)
+                    .collect();
+                
+                if uids_to_fetch.is_empty() {
+                    info!("No UIDs to fetch");
+                } else {
+                    info!("Fetching headers for {} UIDs: {:?}", uids_to_fetch.len(), uids_to_fetch);
+                    
+                    // Convert UIDs to comma-separated string
+                    let uid_list = uids_to_fetch.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
+                    
+                    // Try UID FETCH with headers first
+                    match session.uid_fetch(&uid_list, "BODY.PEEK[HEADER]") {
+                        Ok(messages) => {
+                            info!("BODY.PEEK[HEADER] fetch succeeded, processing {} messages", messages.len());
+                            
+                            // Store partial emails from headers
+                            let mut partial_emails = Vec::new();
+                            for message in messages.iter() {
+                                match parse_email(message) {
+                                    Ok(email) => {
+                                        info!("Successfully parsed email headers: UID={}, from='{}', to='{}', subject='{}'", 
+                                              email.uid, email.from, email.to, email.subject);
+                                        partial_emails.push(email);
+                                    }
+                                    Err(e) => {
+                                        warn!("Failed to parse email from BODY.PEEK[HEADER]: {}", e);
                                     }
                                 }
-                                Err(_) => {
-                                    warn!("Strategy 4 timed out after 30 seconds");
+                            }
+                            
+                            // Now try to fetch bodies separately
+                            match session.uid_fetch(&uid_list, "BODY.PEEK[TEXT]") {
+                                Ok(body_messages) => {
+                                    info!("BODY.PEEK[TEXT] fetch succeeded, processing {} body messages", body_messages.len());
+                                    
+                                    // Match bodies to headers by UID
+                                    for body_message in body_messages.iter() {
+                                        if let Some(body_uid) = body_message.uid {
+                                            if let Some(partial_email) = partial_emails.iter_mut().find(|e| e.uid == body_uid) {
+                                                // Try body() first (for BODY.PEEK[TEXT]), then text() as fallback
+                                                let body_data = body_message.body()
+                                                    .or_else(|| body_message.text());
+                                                    
+                                                if let Some(data) = body_data {
+                                                    partial_email.body = String::from_utf8_lossy(data).to_string();
+                                                    info!("Added body content to email UID {}: {} chars", body_uid, partial_email.body.len());
+                                                } else {
+                                                    warn!("No body data found for UID {} despite successful fetch", body_uid);
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                Err(e) => {
+                                    warn!("BODY.PEEK[TEXT] fetch failed: {}, using headers-only emails", e);
                                 }
                             }
+                            
+                            emails.extend(partial_emails);
                         },
                         Err(e) => {
-                            warn!("Strategy 4 individual UID fetch failed: {}", e);
+                            error!("BODY.PEEK[HEADER] fetch failed with specific error: {:?}", e);
+                            warn!("BODY.PEEK[HEADER] fetch failed: {}, trying ENVELOPE", e);
+                            // Try UID FETCH with ENVELOPE as fallback
+                            match session.uid_fetch(&uid_list, "ENVELOPE") {
+                                Ok(messages) => {
+                                    info!("ENVELOPE fetch succeeded, processing {} messages", messages.len());
+                                    for message in messages.iter() {
+                                        match parse_email(message) {
+                                            Ok(email) => {
+                                                info!("Successfully parsed email from ENVELOPE: UID={}, from='{}', to='{}', subject='{}'", 
+                                                      email.uid, email.from, email.to, email.subject);
+                                                emails.push(email);
+                                            }
+                                            Err(e) => {
+                                                warn!("Failed to parse email from ENVELOPE: {}", e);
+                                            }
+                                        }
+                                    }
+                                },
+                                Err(e2) => {
+                                    error!("ENVELOPE fetch failed with specific error: {:?}", e2);
+                                    warn!("ENVELOPE fetch also failed: {}, falling back to basic UID fetch", e2);
+                                    // Final fallback to basic UID fetch (just UIDs)
+                                    match session.uid_fetch(&uid_list, "UID") {
+                                        Ok(messages) => {
+                                            warn!("Using UID-only fetch - emails will have minimal data");
+                                            for message in messages.iter() {
+                                                match parse_email(message) {
+                                                    Ok(email) => {
+                                                        info!("UID-only parsed email: UID={}, from='{}', to='{}', subject='{}'", 
+                                                              email.uid, email.from, email.to, email.subject);
+                                                        emails.push(email);
+                                                    }
+                                                    Err(e) => {
+                                                        warn!("Failed to parse email from UID-only: {}", e);
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        Err(e3) => {
+                                            error!("Even basic UID fetch failed: {:?}", e3);
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             },
-            Err(e) => {
-                warn!("Strategy 4 SEARCH ALL failed: {}", e);
-            }
-        }
-        
-        // All strategies failed - log the issue and return enhanced error
-        error!("All IMAP fetch strategies failed for sequence '{}' - server may have protocol compatibility issues", sequence_set);
-        warn!("This appears to be a protocol compatibility issue where the server sends responses that don't conform to expected IMAP format");
-        warn!("The server connection, authentication, folder selection, and SEARCH commands work correctly");
-        warn!("However, all FETCH command variants return 'Unable to parse status response'");
-        warn!("This may require using a different IMAP client library or adjusting server configuration");
-        
-        Err(ImapClientError::ServerCompatibilityIssue {
-            server: self.account.host.clone(),
-            operation: format!("FETCH {}", sequence_set),
-        }.into())
-    }
-    
-    async fn fetch_emails_tls(&self, folder: &str, limit: Option<u32>) -> Result<Vec<Email>> {
-        let mut session = self.connect_tls().await?;
-        
-        // Select the folder
-        info!("Attempting to select folder: '{}'", folder);
-        let mailbox = match session.select(folder).await {
-            Ok(mailbox) => {
-                info!("Successfully selected folder '{}', {} messages found", folder, mailbox.exists);
-                mailbox
-            },
-            Err(e) => {
-                // If folder selection fails, try to list available folders for debugging
-                error!("Failed to select folder '{}': {}", folder, e);
-                if let Ok(available_folders) = self.list_folders().await {
-                    warn!("Available folders ({} total): {:?}", available_folders.len(), available_folders);
-                    let suggestions: Vec<&String> = available_folders
-                        .iter()
-                        .filter(|f| f.to_lowercase().contains(&folder.to_lowercase()) || 
-                                   folder.to_lowercase().contains(&f.to_lowercase()))
-                        .collect();
-                    if !suggestions.is_empty() {
-                        warn!("Possible folder matches: {:?}", suggestions);
-                    } else {
-                        warn!("No similar folder names found");
-                    }
-                    
-                    return Err(ImapClientError::FolderNotFound {
-                        folder: folder.to_string(),
-                        available_folders: available_folders,
-                    }.into());
+            Err(search_err) => {
+                error!("UID SEARCH ALL failed: {:?}", search_err);
+                warn!("Could not get UIDs from server, falling back to sequence-based fetch");
+                
+                // Fallback to sequence-based fetch if UID SEARCH fails
+                let start = if total_messages > fetch_count {
+                    total_messages - fetch_count + 1
                 } else {
-                    error!("Could not list folders to provide suggestions");
-                    return Err(ImapClientError::FolderAccessDenied {
-                        folder: folder.to_string(),
-                    }.into());
+                    1
+                };
+                let sequence_set = format!("{}:{}", start, total_messages);
+                
+                match session.fetch(&sequence_set, "UID") {
+                    Ok(messages) => {
+                        warn!("Using sequence-based UID-only fetch - emails will have minimal data");
+                        for message in messages.iter() {
+                            match parse_email(message) {
+                                Ok(email) => {
+                                    info!("Sequence-based UID-only email: UID={}, from='{}', to='{}', subject='{}'", 
+                                          email.uid, email.from, email.to, email.subject);
+                                    emails.push(email);
+                                }
+                                Err(e) => {
+                                    warn!("Failed to parse email from sequence-based fetch: {}", e);
+                                }
+                            }
+                        }
+                    },
+                    Err(e4) => {
+                        error!("Even sequence-based fetch failed: {:?}", e4);
+                    }
                 }
             }
-        };
-        let total_messages = mailbox.exists;
-        
-        if total_messages == 0 {
-            session.logout().await?;
-            return Ok(vec![]);
         }
         
-        // Use conservative fetch settings for better compatibility
-        let fetch_count = limit.unwrap_or(10).min(total_messages).min(10); // Limit to 10 messages max
-        let start = if total_messages > fetch_count {
-            total_messages - fetch_count + 1
-        } else {
-            1
-        };
-        
-        let sequence_set = format!("{}:{}", start, total_messages);
-        info!("Fetching messages: sequence_set='{}', limit={:?}, total_messages={}", sequence_set, limit, total_messages);
-        
-        // Try multiple fetch strategies in order of preference
-        let messages = self.fetch_messages_with_fallback(&mut session, &sequence_set).await?;
-        
-        let mut emails = Vec::new();
-        
-        for message in messages.iter() {
-            if let Ok(email) = parse_email(message) {
-                emails.push(email);
-            }
-        }
+        info!("Parsed {} emails from IMAP messages", emails.len());
         
         // Sort by date, newest first
         emails.sort_by(|a, b| b.date.cmp(&a.date));
         
-        session.logout().await?;
-        Ok(emails)
-    }
-    
-    async fn fetch_emails_plain(&self, folder: &str, limit: Option<u32>) -> Result<Vec<Email>> {
-        let mut session = self.connect_plain().await?;
-        
-        // Select the folder
-        info!("Attempting to select folder: '{}'", folder);
-        let mailbox = match session.select(folder).await {
-            Ok(mailbox) => {
-                info!("Successfully selected folder '{}', {} messages found", folder, mailbox.exists);
-                mailbox
-            },
-            Err(e) => {
-                // If folder selection fails, try to list available folders for debugging
-                error!("Failed to select folder '{}': {}", folder, e);
-                if let Ok(available_folders) = self.list_folders().await {
-                    warn!("Available folders ({} total): {:?}", available_folders.len(), available_folders);
-                    let suggestions: Vec<&String> = available_folders
-                        .iter()
-                        .filter(|f| f.to_lowercase().contains(&folder.to_lowercase()) || 
-                                   folder.to_lowercase().contains(&f.to_lowercase()))
-                        .collect();
-                    if !suggestions.is_empty() {
-                        warn!("Possible folder matches: {:?}", suggestions);
-                    } else {
-                        warn!("No similar folder names found");
-                    }
-                } else {
-                    error!("Could not list folders to provide suggestions");
-                }
-                return Err(anyhow::anyhow!("Failed to select folder '{}' - it may not exist or be inaccessible: {}", folder, e));
-            }
-        };
-        let total_messages = mailbox.exists;
-        
-        if total_messages == 0 {
-            session.logout().await?;
-            return Ok(vec![]);
+        if let Err(e) = session.logout() {
+            warn!("Logout failed (this is usually not critical): {}", e);
         }
-        
-        // Use conservative fetch settings for better compatibility
-        let fetch_count = limit.unwrap_or(10).min(total_messages).min(10); // Limit to 10 messages max
-        let start = if total_messages > fetch_count {
-            total_messages - fetch_count + 1
-        } else {
-            1
-        };
-        
-        let sequence_set = format!("{}:{}", start, total_messages);
-        info!("Fetching messages: sequence_set='{}', limit={:?}, total_messages={}", sequence_set, limit, total_messages);
-        
-        // Try multiple fetch strategies in order of preference
-        let messages = self.fetch_messages_with_fallback(&mut session, &sequence_set).await?;
-        
-        let mut emails = Vec::new();
-        
-        for message in messages.iter() {
-            if let Ok(email) = parse_email(message) {
-                emails.push(email);
-            }
-        }
-        
-        // Sort by date, newest first
-        emails.sort_by(|a, b| b.date.cmp(&a.date));
-        
-        session.logout().await?;
         Ok(emails)
     }
     
     #[allow(dead_code)]
     pub async fn search_emails(&self, _folder: &str, _query: &str) -> Result<Vec<Email>> {
-        // Search methods disabled for now - not currently used and need full async conversion
-        // Return empty result to avoid compilation errors
-        warn!("Search functionality not yet implemented for async-imap - returning empty results");
+        // Search methods disabled for now - not currently used 
+        warn!("Search functionality not yet implemented - returning empty results");
         Ok(vec![])
     }
 }
 
-fn parse_email(fetch: &Fetch) -> Result<Email> {
+/// Decode MIME-encoded headers (like =?utf-8?q?..?=)
+fn decode_mime_header(encoded: &str) -> String {
+    // Use RFC 2047 decoder to handle MIME encoded headers
+    match rfc2047_decoder::decode(encoded.as_bytes()) {
+        Ok(decoded) => decoded,
+        Err(_) => {
+            // If decoding fails, return the original string
+            encoded.to_string()
+        }
+    }
+}
+
+fn parse_email(fetch: &imap::types::Fetch) -> Result<Email> {
     let uid = fetch.uid.ok_or_else(|| anyhow::anyhow!("Message has no UID"))?;
     
     let mut subject = String::new();
@@ -667,20 +613,105 @@ fn parse_email(fetch: &Fetch) -> Result<Email> {
     let mut to = String::new();
     let mut date = Utc::now();
     let mut message_id = String::new();
-    let mut body = String::new();
+    let body;
     
-    // Parse headers if available
-    if let Some(header_data) = fetch.header() {
+    // Try parsing BODY[HEADER.FIELDS] first
+    if let Some(body_data) = fetch.body() {
+        let body_str = String::from_utf8_lossy(body_data);
+        info!("Raw BODY data: {}", body_str.chars().take(200).collect::<String>());
+        
+        // Parse header fields from BODY response
+        for line in body_str.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            
+            if line.starts_with("Subject: ") {
+                let raw_subject = line.strip_prefix("Subject: ").unwrap_or("");
+                subject = decode_mime_header(raw_subject);
+            } else if line.starts_with("From: ") {
+                let raw_from = line.strip_prefix("From: ").unwrap_or("");
+                from = decode_mime_header(raw_from);
+            } else if line.starts_with("To: ") {
+                let raw_to = line.strip_prefix("To: ").unwrap_or("");
+                to = decode_mime_header(raw_to);
+            } else if line.starts_with("Date: ") {
+                let date_str = line.strip_prefix("Date: ").unwrap_or("");
+                if let Ok(parsed_date) = DateTime::parse_from_rfc2822(date_str) {
+                    date = parsed_date.with_timezone(&Utc);
+                }
+            } else if line.starts_with("Message-ID: ") || line.starts_with("Message-Id: ") {
+                message_id = line.strip_prefix("Message-ID: ")
+                    .or_else(|| line.strip_prefix("Message-Id: "))
+                    .unwrap_or("").to_string();
+            }
+        }
+    } else if let Some(envelope) = fetch.envelope() {
+        // Fall back to ENVELOPE (structured data)
+        if let Some(subj) = &envelope.subject {
+            let raw_subject = String::from_utf8_lossy(subj);
+            subject = decode_mime_header(&raw_subject);
+        }
+        
+        // Parse from addresses
+        if let Some(from_addrs) = &envelope.from {
+            if !from_addrs.is_empty() {
+                let addr = &from_addrs[0];
+                let name = addr.name.as_ref()
+                    .map(|n| String::from_utf8_lossy(n).to_string())
+                    .unwrap_or_default();
+                let email = format!("{}@{}", 
+                    addr.mailbox.as_ref().map(|m| String::from_utf8_lossy(m)).unwrap_or_default(),
+                    addr.host.as_ref().map(|h| String::from_utf8_lossy(h)).unwrap_or_default()
+                );
+                from = if !name.is_empty() {
+                    format!("{} <{}>", name, email)
+                } else {
+                    email
+                };
+            }
+        }
+        
+        // Parse to addresses
+        if let Some(to_addrs) = &envelope.to {
+            if !to_addrs.is_empty() {
+                let addr = &to_addrs[0];
+                let email = format!("{}@{}", 
+                    addr.mailbox.as_ref().map(|m| String::from_utf8_lossy(m)).unwrap_or_default(),
+                    addr.host.as_ref().map(|h| String::from_utf8_lossy(h)).unwrap_or_default()
+                );
+                to = email;
+            }
+        }
+        
+        // Parse date
+        if let Some(date_str) = &envelope.date {
+            let date_string = String::from_utf8_lossy(date_str);
+            if let Ok(parsed_date) = DateTime::parse_from_rfc2822(&date_string) {
+                date = parsed_date.with_timezone(&Utc);
+            }
+        }
+        
+        // Parse message ID
+        if let Some(msg_id) = &envelope.message_id {
+            message_id = String::from_utf8_lossy(msg_id).to_string();
+        }
+    } else if let Some(header_data) = fetch.header() {
+        // Fall back to parsing raw headers if neither BODY nor ENVELOPE is available
         let header_str = String::from_utf8_lossy(header_data);
         
         // Simple header parsing
         for line in header_str.lines() {
             if line.starts_with("Subject: ") {
-                subject = line.strip_prefix("Subject: ").unwrap_or("").to_string();
+                let raw_subject = line.strip_prefix("Subject: ").unwrap_or("");
+                subject = decode_mime_header(raw_subject);
             } else if line.starts_with("From: ") {
-                from = line.strip_prefix("From: ").unwrap_or("").to_string();
+                let raw_from = line.strip_prefix("From: ").unwrap_or("");
+                from = decode_mime_header(raw_from);
             } else if line.starts_with("To: ") {
-                to = line.strip_prefix("To: ").unwrap_or("").to_string();
+                let raw_to = line.strip_prefix("To: ").unwrap_or("");
+                to = decode_mime_header(raw_to);
             } else if line.starts_with("Date: ") {
                 let date_str = line.strip_prefix("Date: ").unwrap_or("");
                 // Try to parse the date
@@ -702,7 +733,7 @@ fn parse_email(fetch: &Fetch) -> Result<Email> {
     }
     
     // Check if email is seen
-    let is_seen = fetch.flags().any(|flag| matches!(flag, async_imap::types::Flag::Seen));
+    let is_seen = fetch.flags().iter().any(|flag| matches!(flag, imap::types::Flag::Seen));
     
     // If we don't have basic email info, generate defaults
     if subject.is_empty() && from.is_empty() && message_id.is_empty() {
@@ -710,6 +741,9 @@ fn parse_email(fetch: &Fetch) -> Result<Email> {
         from = "[Unknown sender]".to_string();
         message_id = format!("<uid-{}>", uid);
     }
+    
+    debug!("Parsed email - UID: {}, Subject: '{}', From: '{}', To: '{}', MessageID: '{}'", 
+           uid, subject, from, to, message_id);
     
     Ok(Email {
         uid,

@@ -4,7 +4,7 @@ use crate::db::operations;
 use super::client::{ImapClient, Email};
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::SqliteConnection;
-use tracing::{info, warn, error};
+use tracing::{info, warn, error, debug};
 use chrono::Utc;
 use uuid::Uuid;
 
@@ -82,9 +82,15 @@ impl EmailProcessor {
             items_created: 0,
         };
         
+        info!("Processing {} emails against rule criteria", emails.len());
+        
         for email in emails {
+            debug!("Checking email - UID: {}, Subject: '{}', From: '{}' against rule: {}", 
+                   email.uid, email.subject, email.from, rule.name);
+                   
             if self.matches_rule(&email, rule) {
                 result.emails_processed += 1;
+                info!("Email matches rule '{}': {}", rule.name, email.subject);
                 
                 // Check if we already have this email in the feed
                 if !self.email_exists_in_feed(&email, &feed.id)? {
@@ -98,7 +104,11 @@ impl EmailProcessor {
                             error!("Failed to create feed item: {}", e);
                         }
                     }
+                } else {
+                    info!("Email already exists in feed: {}", email.subject);
                 }
+            } else {
+                debug!("Email does not match rule criteria");
             }
         }
         
@@ -106,29 +116,44 @@ impl EmailProcessor {
     }
     
     fn matches_rule(&self, email: &Email, rule: &EmailRule) -> bool {
+        info!("Matching email against rule '{}': from_pattern={:?}, to_pattern={:?}, subject_pattern={:?}", 
+               rule.name, rule.from_address, rule.to_address, rule.subject_contains);
+        info!("Email details: UID={}, from='{}', to='{}', subject='{}'", 
+               email.uid, email.from, email.to, email.subject);
+        
         // Check from address
         if let Some(from_pattern) = &rule.from_address {
             if !email.from.to_lowercase().contains(&from_pattern.to_lowercase()) {
+                info!("Email from '{}' does not contain pattern '{}'", email.from, from_pattern);
                 return false;
+            } else {
+                info!("Email from '{}' matches pattern '{}'", email.from, from_pattern);
             }
         }
         
         // Check to address
         if let Some(to_pattern) = &rule.to_address {
             if !email.to.to_lowercase().contains(&to_pattern.to_lowercase()) {
+                info!("Email to '{}' does not contain pattern '{}'", email.to, to_pattern);
                 return false;
+            } else {
+                info!("Email to '{}' matches pattern '{}'", email.to, to_pattern);
             }
         }
         
         // Check subject
         if let Some(subject_pattern) = &rule.subject_contains {
             if !email.subject.to_lowercase().contains(&subject_pattern.to_lowercase()) {
+                info!("Email subject '{}' does not contain pattern '{}'", email.subject, subject_pattern);
                 return false;
+            } else {
+                info!("Email subject '{}' matches pattern '{}'", email.subject, subject_pattern);
             }
         }
         
         // TODO: Check labels/tags when IMAP server supports them
         
+        info!("Email matches all rule criteria");
         true
     }
     

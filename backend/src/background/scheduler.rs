@@ -27,6 +27,7 @@ pub struct ProcessingStats {
 /// Account processing state
 #[derive(Debug, Clone)]
 pub struct AccountState {
+    #[allow(dead_code)]
     pub account_id: String,
     pub stats: ProcessingStats,
     pub is_processing: bool,
@@ -110,11 +111,13 @@ impl EmailScheduler {
     }
     
     /// Check if the scheduler is running
+    #[allow(dead_code)]
     pub async fn is_running(&self) -> bool {
         *self.is_running.lock().await
     }
     
     /// Get processing statistics for all accounts
+    #[allow(dead_code)]
     pub async fn get_stats(&self) -> HashMap<String, ProcessingStats> {
         let states = self.account_states.read().await;
         states.iter()
@@ -123,6 +126,7 @@ impl EmailScheduler {
     }
     
     /// Get processing state for a specific account
+    #[allow(dead_code)]
     pub async fn get_account_state(&self, account_id: &str) -> Option<AccountState> {
         let states = self.account_states.read().await;
         states.get(account_id).cloned()

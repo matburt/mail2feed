@@ -1,8 +1,10 @@
-use anyhow::Result;
-use async_imap::Session;
-use futures::{AsyncRead, AsyncWrite};
-use tracing::{debug, info, warn};
+// Protocol compatibility module - currently unused as we've moved to synchronous imap
+// Keeping this file for potential future use or reference
 
+#[allow(dead_code)]
+pub struct ProtocolCompat;
+
+/*
 /// Protocol compatibility wrapper for ProtonMail Bridge
 /// 
 /// ProtonMail Bridge has strict IMAP protocol requirements and expects
@@ -142,26 +144,45 @@ impl ProtocolCompat {
         
         info!("Using ProtonMail Bridge compatible fetch for sequence: {}", sequence_set);
         
-        // Strategy 1: Try ENVELOPE only (minimal data)
-        debug!("Trying ENVELOPE-only fetch");
-        match session.fetch(sequence_set, "ENVELOPE").await {
-            Ok(stream) => {
-                let timeout_duration = std::time::Duration::from_secs(30);
-                match tokio::time::timeout(timeout_duration, stream.collect::<Vec<_>>()).await {
-                    Ok(results) => {
-                        let messages: Vec<_> = results.into_iter().filter_map(|r| r.ok()).collect();
-                        if !messages.is_empty() {
-                            info!("Successfully fetched {} messages with ENVELOPE", messages.len());
-                            return Ok(messages);
+        // Strategy 1: Try ENVELOPE with UID (minimal data)
+        debug!("Trying ENVELOPE with UID fetch");
+        match session.fetch(sequence_set, "ENVELOPE UID").await {
+            Ok(mut stream) => {
+                info!("ENVELOPE fetch command succeeded, starting manual stream collection...");
+                let mut messages: Vec<async_imap::types::Fetch> = Vec::new();
+                let timeout_duration = std::time::Duration::from_secs(5);
+                
+                // Manually collect with timeout per item to avoid hanging
+                loop {
+                    match tokio::time::timeout(timeout_duration, stream.next()).await {
+                        Ok(Some(Ok(message))) => {
+                            messages.push(message);
+                            info!("Collected ENVELOPE message {}", messages.len());
+                        }
+                        Ok(Some(Err(e))) => {
+                            warn!("Error in ENVELOPE stream item: {}", e);
+                            break;
+                        }
+                        Ok(None) => {
+                            info!("ENVELOPE stream ended normally, collected {} messages", messages.len());
+                            break;
+                        }
+                        Err(_) => {
+                            warn!("ENVELOPE stream item timed out after 5 seconds, collected {} messages so far", messages.len());
+                            break;
                         }
                     }
-                    Err(_) => {
-                        warn!("ENVELOPE fetch timed out after 30 seconds");
-                    }
+                }
+                
+                if !messages.is_empty() {
+                    info!("Successfully fetched {} messages with ENVELOPE", messages.len());
+                    return Ok(messages);
+                } else {
+                    warn!("ENVELOPE fetch returned empty results");
                 }
             }
             Err(e) => {
-                warn!("ENVELOPE fetch failed: {}", e);
+                warn!("ENVELOPE fetch command failed: {}", e);
             }
         }
         
@@ -221,16 +242,15 @@ impl ProtocolCompat {
     }
 }
 
+*/
+
 #[cfg(test)]
 mod tests {
     use super::*;
     
     #[test]
-    fn test_is_protonmail_bridge() {
-        assert!(ProtocolCompat::is_protonmail_bridge("localhost", 1143));
-        assert!(ProtocolCompat::is_protonmail_bridge("127.0.0.1", 1143));
-        assert!(ProtocolCompat::is_protonmail_bridge("localhost", 1025));
-        assert!(!ProtocolCompat::is_protonmail_bridge("imap.gmail.com", 993));
-        assert!(!ProtocolCompat::is_protonmail_bridge("localhost", 993));
+    fn test_protocol_compat_exists() {
+        // Just verify the struct exists
+        let _compat = ProtocolCompat;
     }
 }

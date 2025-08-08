@@ -18,10 +18,10 @@ diesel_migrations = "2.1"
 dotenvy = "0.15"
 
 # Email/IMAP  
-async-imap = "0.9"
+imap = "2.4"
 native-tls = "0.2"
 futures = "0.3"
-async-native-tls = "0.5"
+rfc2047-decoder = "1.0"  # For MIME decoding of headers
 
 # Feed generation
 rss = "2.0"

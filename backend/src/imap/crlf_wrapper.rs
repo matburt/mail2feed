@@ -11,12 +11,14 @@ use tracing::{debug, trace};
 /// A wrapper that can optionally ensure all outgoing data has proper CRLF line endings
 pub struct CrlfStreamWrapper<T> {
     inner: T,
+    #[allow(dead_code)]
     write_buffer: Vec<u8>,
     enable_crlf_processing: bool,
 }
 
 impl<T> CrlfStreamWrapper<T> {
     /// Create a new wrapper with CRLF processing enabled (for ProtonMail Bridge)
+    #[allow(dead_code)]
     pub fn new(inner: T) -> Self {
         Self {
             inner,
@@ -26,6 +28,7 @@ impl<T> CrlfStreamWrapper<T> {
     }
     
     /// Create a new wrapper with CRLF processing disabled (passthrough mode)
+    #[allow(dead_code)]
     pub fn new_passthrough(inner: T) -> Self {
         Self {
             inner,

@@ -162,11 +162,13 @@ impl BackgroundConfig {
     }
     
     /// Get initial retry delay as Duration
+    #[allow(dead_code)]
     pub fn initial_retry_delay(&self) -> Duration {
         Duration::from_secs(self.retry.initial_delay_seconds)
     }
     
     /// Get maximum retry delay as Duration
+    #[allow(dead_code)]
     pub fn max_retry_delay(&self) -> Duration {
         Duration::from_secs(self.retry.max_delay_seconds)
     }

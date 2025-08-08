@@ -203,6 +203,7 @@ impl BackgroundService {
     }
     
     /// Restart the background service
+    #[allow(dead_code)]
     pub async fn restart(&mut self) -> anyhow::Result<()> {
         info!("Restarting background service...");
         
@@ -252,16 +253,19 @@ impl BackgroundService {
     }
     
     /// Check if service is running
+    #[allow(dead_code)]
     pub async fn is_running(&self) -> bool {
         matches!(*self.state.read().await, ServiceState::Running)
     }
     
     /// Get service state
+    #[allow(dead_code)]
     pub async fn get_state(&self) -> ServiceState {
         self.state.read().await.clone()
     }
     
     /// Process a specific account manually
+    #[allow(dead_code)]
     pub async fn process_account(&self, account_id: &str) -> anyhow::Result<()> {
         if !self.is_running().await {
             return Err(anyhow::anyhow!("Service is not running"));
@@ -285,6 +289,7 @@ impl BackgroundService {
     }
     
     /// Update service configuration (requires restart to take effect)
+    #[allow(dead_code)]
     pub fn update_config(&mut self, new_config: BackgroundConfig) -> anyhow::Result<()> {
         new_config.validate()?;
         self.config = new_config;
@@ -293,6 +298,7 @@ impl BackgroundService {
     }
     
     /// Get current configuration
+    #[allow(dead_code)]
     pub fn get_config(&self) -> &BackgroundConfig {
         &self.config
     }

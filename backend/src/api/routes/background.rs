@@ -17,11 +17,13 @@ pub struct BackgroundStatusResponse {
 
 #[derive(Deserialize)]
 pub struct StartServiceRequest {
+    #[allow(dead_code)]
     pub force: Option<bool>,
 }
 
 #[derive(Deserialize)]
 pub struct ProcessAccountRequest {
+    #[allow(dead_code)]
     pub account_id: String,
 }
 

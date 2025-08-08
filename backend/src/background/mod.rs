@@ -10,7 +10,7 @@ pub mod scheduler;
 pub mod service;
 
 pub use config::BackgroundConfig;
-pub use control::{ServiceController, ControlMessage, ServiceStatusResponse};
+pub use control::ServiceController;
 pub use service::BackgroundService;
 
 use std::sync::Arc;
