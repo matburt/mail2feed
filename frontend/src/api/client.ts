@@ -15,11 +15,6 @@ export class ApiError extends Error {
   }
 }
 
-// Generic API response type
-interface ApiResponse<T = any> {
-  data?: T
-  error?: string
-}
 
 // HTTP methods
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'

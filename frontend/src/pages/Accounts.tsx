@@ -4,6 +4,7 @@ import { useAppContext } from '../context/AppContext'
 import { accountsApi } from '../api/accounts'
 import { useToast } from '../components/common/Toast'
 import { AccountCardSkeleton } from '../components/common/LoadingSkeleton'
+import { AccountProcessingButton } from '../components/AccountProcessingButton'
 import type { ImapAccount, ConnectionTestResult } from '../types'
 
 export default function Accounts() {
@@ -69,17 +70,6 @@ export default function Accounts() {
     }
   }
 
-  const handleProcessAccount = async (id: string) => {
-    try {
-      dispatch({ type: 'SET_PROCESSING', payload: true })
-      await accountsApi.processEmails(id)
-      dispatch({ type: 'SET_ERROR', payload: null })
-    } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to process emails' })
-    } finally {
-      dispatch({ type: 'SET_PROCESSING', payload: false })
-    }
-  }
 
   const getConnectionStatus = (account: ImapAccount) => {
     const result = testResults[account.id]
@@ -264,16 +254,11 @@ export default function Accounts() {
                           </>
                         )}
                       </button>
-                      <button
-                        onClick={() => handleProcessAccount(account.id)}
-                        disabled={state.processing}
-                        className="btn btn-secondary btn-sm"
-                      >
-                        <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        Process
-                      </button>
+                      <AccountProcessingButton
+                        accountId={account.id}
+                        accountName={account.name}
+                        size="sm"
+                      />
                       <Link
                         to={`/accounts/${account.id}/edit`}
                         className="btn btn-secondary btn-sm"

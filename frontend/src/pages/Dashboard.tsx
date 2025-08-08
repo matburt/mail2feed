@@ -4,6 +4,7 @@ import { useAppContext } from '../context/AppContext'
 import { accountsApi } from '../api/accounts'
 import { rulesApi } from '../api/rules'
 import { feedsApi } from '../api/feeds'
+import { BackgroundServiceStatus } from '../components/BackgroundServiceStatus'
 
 export default function Dashboard() {
   const { state, dispatch } = useAppContext()
@@ -31,17 +32,6 @@ export default function Dashboard() {
     loadData()
   }, [dispatch])
 
-  const handleProcessAll = async () => {
-    try {
-      dispatch({ type: 'SET_PROCESSING', payload: true })
-      await feedsApi.processAll()
-      dispatch({ type: 'SET_ERROR', payload: null })
-    } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: error instanceof Error ? error.message : 'Failed to process emails' })
-    } finally {
-      dispatch({ type: 'SET_PROCESSING', payload: false })
-    }
-  }
 
   if (state.loading) {
     return (
@@ -64,22 +54,6 @@ export default function Dashboard() {
             Monitor your email-to-feed conversion pipeline
           </p>
         </div>
-        <div className="mt-4 flex md:mt-0 md:ml-4">
-          <button
-            onClick={handleProcessAll}
-            disabled={state.processing || state.accounts.length === 0}
-            className="btn btn-primary"
-          >
-            {state.processing ? (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                Processing...
-              </>
-            ) : (
-              'Process All Emails'
-            )}
-          </button>
-        </div>
       </div>
 
       {state.error && (
@@ -94,6 +68,9 @@ export default function Dashboard() {
           </div>
         </div>
       )}
+
+      {/* Background Service Status */}
+      <BackgroundServiceStatus />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">

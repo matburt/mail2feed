@@ -4,12 +4,12 @@
 
 use crate::background::config::BackgroundConfig;
 use crate::db::{models::ImapAccount, operations, DbPool};
-use crate::imap::processor::{EmailProcessor, ProcessingResult};
+use crate::imap::processor::EmailProcessor;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex, RwLock};
-use tokio::time::{interval, timeout};
+use tokio::time::interval;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
@@ -35,6 +35,7 @@ pub struct AccountState {
 }
 
 /// Email processing scheduler
+#[derive(Clone)]
 pub struct EmailScheduler {
     pool: DbPool,
     config: BackgroundConfig,
@@ -81,11 +82,11 @@ impl EmailScheduler {
         // Initialize account states
         self.initialize_account_states().await?;
         
-        // Start the main scheduling loop
-        let scheduler_task = self.run_scheduler_loop();
-        
-        // Spawn the task and return immediately
-        tokio::spawn(scheduler_task);
+        // Start the main scheduling loop by cloning necessary data
+        let scheduler_clone = self.clone_for_task();
+        tokio::spawn(async move {
+            scheduler_clone.run_scheduler_loop().await;
+        });
         
         info!("Email processing scheduler started successfully");
         Ok(())
@@ -129,20 +130,96 @@ impl EmailScheduler {
     
     /// Manually trigger processing for a specific account
     pub async fn process_account_now(&self, account_id: &str) -> anyhow::Result<ProcessingStats> {
-        let semaphore = self.processing_semaphore.clone();
-        let permit = semaphore.acquire().await
+        let _permit = self.processing_semaphore.acquire().await
             .map_err(|_| anyhow::anyhow!("Failed to acquire processing permit"))?;
         
         let account = self.get_account_by_id(account_id).await?;
-        let result = self.process_single_account(account, true).await;
+        let processor = EmailProcessor::new(account.clone(), self.pool.clone());
+        let start_time = std::time::Instant::now();
         
-        drop(permit);
+        info!("Manually processing account '{}' ({})", account.name, account_id);
         
-        match result {
-            Ok(stats) => Ok(stats),
-            Err(e) => {
-                error!("Manual account processing failed for {}: {}", account_id, e);
+        let result = tokio::time::timeout(
+            self.config.max_processing_time(),
+            processor.process_account()
+        ).await;
+        
+        let processing_result = match result {
+            Ok(Ok(result)) => {
+                info!(
+                    "Successfully processed account '{}': {} emails in {:?}",
+                    account.name,
+                    result.total_emails_processed,
+                    start_time.elapsed()
+                );
+                Ok(result)
+            }
+            Ok(Err(e)) => {
+                warn!("Failed to process account '{}': {}", account.name, e);
                 Err(e)
+            }
+            Err(_) => {
+                error!("Timeout processing account '{}'", account.name);
+                Err(anyhow::anyhow!("Processing timeout"))
+            }
+        };
+        
+        // Update account state
+        let mut states = self.account_states.write().await;
+        let now = std::time::Instant::now();
+        
+        if let Some(state) = states.get_mut(account_id) {
+            state.stats.last_run = Some(now);
+            
+            match &processing_result {
+                Ok(result) => {
+                    state.stats.emails_processed += result.total_emails_processed;
+                    state.stats.errors_count += result.errors.len();
+                    state.stats.last_success = Some(now);
+                    state.stats.last_error = None;
+                    state.stats.consecutive_failures = 0;
+                    state.retry_count = 0;
+                    state.next_allowed_run = now + self.config.per_account_interval();
+                    
+                    Ok(ProcessingStats {
+                        emails_processed: result.total_emails_processed,
+                        errors_count: result.errors.len(),
+                        last_run: Some(start_time),
+                        last_success: Some(start_time),
+                        last_error: None,
+                        consecutive_failures: 0,
+                    })
+                }
+                Err(e) => {
+                    state.stats.errors_count += 1;
+                    state.stats.last_error = Some(e.to_string());
+                    state.stats.consecutive_failures += 1;
+                    state.retry_count += 1;
+                    
+                    let retry_delay = if state.retry_count <= self.config.retry.max_attempts {
+                        self.config.calculate_retry_delay(state.retry_count - 1)
+                    } else {
+                        state.retry_count = 0;
+                        self.config.per_account_interval()
+                    };
+                    
+                    state.next_allowed_run = now + retry_delay;
+                    
+                    error!("Manual account processing failed for {}: {}", account_id, e);
+                    Err(anyhow::anyhow!("Processing failed: {}", e))
+                }
+            }
+        } else {
+            match processing_result {
+                Ok(_) => Ok(ProcessingStats {
+                    emails_processed: 0,
+                    errors_count: 0,
+                    last_run: Some(start_time),
+                    last_success: Some(start_time),
+                    last_error: None,
+                    consecutive_failures: 0,
+                }),
+                Err(e) => Err(e)
             }
         }
     }
@@ -188,21 +265,83 @@ impl EmailScheduler {
             };
             
             if should_process {
-                // Try to acquire processing permit
-                let semaphore = self.processing_semaphore.clone();
-                if let Ok(permit) = semaphore.try_acquire() {
+                // Check if we can acquire a processing slot
+                if self.processing_semaphore.available_permits() > 0 {
                     // Mark as processing
                     self.mark_account_processing(&account_id, true).await;
                     
-                    // Spawn processing task
-                    let scheduler = self.clone_for_task();
+                    // Spawn processing task with proper ownership
+                    let pool = self.pool.clone();
+                    let config = self.config.clone();
+                    let account_states = self.account_states.clone();
+                    let semaphore = self.processing_semaphore.clone();
+                    let account_id_clone = account_id.clone();
+                    
                     let task = tokio::spawn(async move {
-                        let result = scheduler.process_single_account(account, false).await;
-                        scheduler.mark_account_processing(&account_id, false).await;
-                        drop(permit);
+                        // Acquire permit inside the task
+                        let _permit = semaphore.acquire().await;
                         
-                        if let Err(e) = result {
-                            error!("Background processing failed for account {}: {}", account_id, e);
+                        // Process the account
+                        let processor = EmailProcessor::new(account.clone(), pool);
+                        let start_time = std::time::Instant::now();
+                        
+                        let result = match tokio::time::timeout(
+                            config.max_processing_time(),
+                            processor.process_account()
+                        ).await {
+                            Ok(Ok(processing_result)) => {
+                                info!(
+                                    "Successfully processed account '{}': {} emails in {:?}",
+                                    account.name,
+                                    processing_result.total_emails_processed,
+                                    start_time.elapsed()
+                                );
+                                Ok(processing_result)
+                            }
+                            Ok(Err(e)) => {
+                                warn!("Failed to process account '{}': {}", account.name, e);
+                                Err(e)
+                            }
+                            Err(_) => {
+                                error!("Timeout processing account '{}'", account.name);
+                                Err(anyhow::anyhow!("Processing timeout"))
+                            }
+                        };
+                        
+                        // Update account state
+                        let mut states = account_states.write().await;
+                        let now = std::time::Instant::now();
+                        
+                        if let Some(state) = states.get_mut(&account_id_clone) {
+                            state.stats.last_run = Some(now);
+                            state.is_processing = false;
+                            
+                            match result {
+                                Ok(processing_result) => {
+                                    state.stats.emails_processed += processing_result.total_emails_processed;
+                                    state.stats.errors_count += processing_result.errors.len();
+                                    state.stats.last_success = Some(now);
+                                    state.stats.last_error = None;
+                                    state.stats.consecutive_failures = 0;
+                                    state.retry_count = 0;
+                                    state.next_allowed_run = now + config.per_account_interval();
+                                }
+                                Err(e) => {
+                                    state.stats.errors_count += 1;
+                                    state.stats.last_error = Some(e.to_string());
+                                    state.stats.consecutive_failures += 1;
+                                    state.retry_count += 1;
+                                    
+                                    let retry_delay = if state.retry_count <= config.retry.max_attempts {
+                                        config.calculate_retry_delay(state.retry_count - 1)
+                                    } else {
+                                        state.retry_count = 0;
+                                        config.per_account_interval()
+                                    };
+                                    
+                                    state.next_allowed_run = now + retry_delay;
+                                }
+                            }
                         }
                     });
                     
@@ -218,81 +357,6 @@ impl EmailScheduler {
         }
         
         Ok(())
-    }
-    
-    /// Process a single account
-    async fn process_single_account(
-        &self, 
-        account: ImapAccount, 
-        manual: bool
-    ) -> anyhow::Result<ProcessingStats> {
-        let account_id = account.id.clone();
-        let start_time = Instant::now();
-        
-        info!(
-            "Processing account '{}' ({}) - {}",
-            account.name,
-            account_id,
-            if manual { "manual" } else { "scheduled" }
-        );
-        
-        // Create processor for this account
-        let processor = EmailProcessor::new(account.clone(), self.pool.clone());
-        
-        // Apply processing timeout
-        let processing_future = processor.process_account();
-        let result = timeout(
-            self.config.max_processing_time(),
-            processing_future
-        ).await;
-        
-        let processing_result = match result {
-            Ok(Ok(result)) => {
-                info!(
-                    "Successfully processed account '{}': {} emails in {:?}",
-                    account.name,
-                    result.total_emails_processed,
-                    start_time.elapsed()
-                );
-                Ok(result)
-            }
-            Ok(Err(e)) => {
-                warn!(
-                    "Failed to process account '{}': {} (took {:?})",
-                    account.name,
-                    e,
-                    start_time.elapsed()
-                );
-                Err(e)
-            }
-            Err(_) => {
-                let timeout_error = anyhow::anyhow!(
-                    "Processing timeout after {:?}",
-                    self.config.max_processing_time()
-                );
-                error!(
-                    "Timeout processing account '{}' after {:?}",
-                    account.name,
-                    self.config.max_processing_time()
-                );
-                Err(timeout_error)
-            }
-        };
-        
-        // Update account state
-        self.update_account_state(&account_id, &processing_result).await;
-        
-        match processing_result {
-            Ok(result) => Ok(ProcessingStats {
-                emails_processed: result.total_emails_processed,
-                errors_count: result.errors.len(),
-                last_run: Some(start_time),
-                last_success: Some(start_time),
-                last_error: None,
-                consecutive_failures: 0,
-            }),
-            Err(e) => Err(e),
-        }
     }
     
     /// Initialize account states for all active accounts
@@ -316,49 +380,6 @@ impl EmailScheduler {
         
         info!("Initialized states for {} accounts", states.len());
         Ok(())
-    }
-    
-    /// Update account state after processing
-    async fn update_account_state(
-        &self,
-        account_id: &str,
-        result: &anyhow::Result<ProcessingResult>
-    ) {
-        let mut states = self.account_states.write().await;
-        let now = Instant::now();
-        
-        if let Some(state) = states.get_mut(account_id) {
-            state.stats.last_run = Some(now);
-            
-            match result {
-                Ok(processing_result) => {
-                    state.stats.emails_processed += processing_result.total_emails_processed;
-                    state.stats.errors_count += processing_result.errors.len();
-                    state.stats.last_success = Some(now);
-                    state.stats.last_error = None;
-                    state.stats.consecutive_failures = 0;
-                    state.retry_count = 0;
-                    state.next_allowed_run = now + self.config.per_account_interval();
-                }
-                Err(e) => {
-                    state.stats.errors_count += 1;
-                    state.stats.last_error = Some(e.to_string());
-                    state.stats.consecutive_failures += 1;
-                    state.retry_count += 1;
-                    
-                    // Calculate next retry time with exponential backoff
-                    let retry_delay = if state.retry_count <= self.config.retry.max_attempts {
-                        self.config.calculate_retry_delay(state.retry_count - 1)
-                    } else {
-                        // Max retries exceeded, wait for next regular interval
-                        state.retry_count = 0;
-                        self.config.per_account_interval()
-                    };
-                    
-                    state.next_allowed_run = now + retry_delay;
-                }
-            }
-        }
     }
     
     /// Mark account as processing or not processing

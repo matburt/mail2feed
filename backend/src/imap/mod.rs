@@ -1,5 +1,7 @@
 pub mod client;
+pub mod crlf_wrapper;
 pub mod processor;
+pub mod protocol_compat;
 
 use anyhow::Result;
 use crate::db::models::ImapAccount;

@@ -50,7 +50,7 @@ pub async fn test_connection(
     match client.test_connection().await {
         Ok(_) => {
             // Try to list folders
-            match client.list_folders() {
+            match client.list_folders().await {
                 Ok(folders) => {
                     info!("Successfully connected and retrieved {} folders", folders.len());
                     Ok(Json(TestConnectionResponse {

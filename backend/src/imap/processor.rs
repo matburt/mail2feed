@@ -74,6 +74,7 @@ impl EmailProcessor {
         
         // Fetch emails from the specified folder
         let emails = client.fetch_emails_from_folder(&rule.folder, Some(100))
+            .await
             .with_context(|| format!("Failed to fetch emails from folder: {}", rule.folder))?;
         
         let mut result = RuleProcessingResult {

@@ -13,13 +13,19 @@ if [ ! -f "CLAUDE.md" ]; then
     exit 1
 fi
 
-# Use Node.js version from .nvmrc
+# Setup Node.js 20 environment
+echo "📦 Setting up Node.js environment..."
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+
+# Use Node.js version from .nvmrc if it exists, otherwise use Node 20
 if [ -f ".nvmrc" ]; then
-    echo "📦 Setting Node.js version..."
-    # Source nvm if available
-    export NVM_DIR="$HOME/.nvm"
-    [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
     nvm use
+elif nvm use v20.19.3 >/dev/null 2>&1; then
+    echo "   ✅ Using Node.js $(node --version)"
+else
+    echo "   ⚠️  Node.js 20.19.3 not found, using current version: $(node --version)"
 fi
 
 # Check if backend directory exists

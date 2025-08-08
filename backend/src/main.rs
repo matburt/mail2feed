@@ -1,4 +1,5 @@
 mod api;
+mod background;
 mod db;
 mod feed;
 mod imap;
@@ -8,7 +9,7 @@ use dotenvy::dotenv;
 use std::env;
 use std::net::SocketAddr;
 use tower_http::cors::{CorsLayer, Any};
-use tracing::info;
+use tracing::{info, error};
 use tracing_subscriber;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
@@ -33,7 +34,17 @@ async fn main() -> anyhow::Result<()> {
     
     info!("Database pool created successfully!");
     
-    // Background service temporarily disabled for AppState migration
+    // Initialize and start background service
+    let background_config = background::BackgroundConfig::from_env();
+    let background_handle = background::initialize_background_service(pool.clone(), background_config).await?;
+    
+    // Start background service automatically if enabled
+    if let Err(e) = background::start_background_service(&background_handle).await {
+        error!("Failed to start background service: {}", e);
+        info!("Web server will start without background processing");
+    } else {
+        info!("Background service started successfully");
+    }
     
     // Get server configuration from environment
     let host = env::var("SERVER_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
@@ -57,7 +68,7 @@ async fn main() -> anyhow::Result<()> {
     };
     
     // Build the application routes
-    let app = api::create_routes(pool, background_handle)
+    let app = api::create_routes(pool, background_handle.clone())
         .layer(cors.allow_headers(Any).allow_methods(Any));
     
     // Start the server
@@ -66,10 +77,37 @@ async fn main() -> anyhow::Result<()> {
     
     info!("Server listening on {}", addr);
     
-    axum::Server::bind(&addr)
+    // Setup graceful shutdown
+    let server = axum::Server::bind(&addr)
         .serve(app.into_make_service())
-        .await
-        .map_err(|e| anyhow::anyhow!("Server error: {}", e))?;
+        .with_graceful_shutdown(shutdown_signal());
+    
+    // Run server with background service cleanup
+    tokio::select! {
+        result = server => {
+            if let Err(e) = result {
+                error!("Server error: {}", e);
+                return Err(anyhow::anyhow!("Server error: {}", e));
+            }
+        }
+        _ = tokio::signal::ctrl_c() => {
+            info!("Received shutdown signal");
+        }
+    }
+    
+    // Shutdown background service
+    info!("Shutting down background service...");
+    if let Err(e) = background::stop_background_service(&background_handle).await {
+        error!("Error stopping background service: {}", e);
+    } else {
+        info!("Background service stopped successfully");
+    }
     
     Ok(())
+}
+
+async fn shutdown_signal() {
+    tokio::signal::ctrl_c()
+        .await
+        .expect("Failed to install CTRL+C signal handler");
 }

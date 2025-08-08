@@ -21,5 +21,6 @@ pub fn create_routes(pool: DbPool, background_handle: BackgroundServiceHandle) -
         .merge(routes::email_rules::routes())
         .merge(routes::feeds::routes())
         .merge(routes::imap_operations::routes())
+        .merge(routes::background::routes())
         .with_state(state)
 }

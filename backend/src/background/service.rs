@@ -2,12 +2,12 @@
 //! 
 //! Provides the main service interface for managing background email processing
 
-use crate::background::{config::BackgroundConfig, scheduler::EmailScheduler};
+use crate::background::{config::BackgroundConfig, scheduler::EmailScheduler, control::{ControlMessage, ServiceStatusResponse}};
 use crate::db::DbPool;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::RwLock;
+use tokio::sync::{RwLock, mpsc};
 use tracing::{error, info, warn};
 
 /// Overall service status
@@ -53,11 +53,13 @@ pub struct BackgroundService {
     state: Arc<RwLock<ServiceState>>,
     started_at: Arc<RwLock<Option<Instant>>>,
     config: BackgroundConfig,
+    control_rx: mpsc::UnboundedReceiver<ControlMessage>,
+    is_paused: Arc<RwLock<bool>>,
 }
 
 impl BackgroundService {
     /// Create a new background service
-    pub fn new(pool: DbPool, config: BackgroundConfig) -> anyhow::Result<Self> {
+    pub fn new(pool: DbPool, config: BackgroundConfig, control_rx: mpsc::UnboundedReceiver<ControlMessage>) -> anyhow::Result<Self> {
         info!("Creating background service with config: {:?}", config);
         
         // Validate configuration
@@ -74,6 +76,8 @@ impl BackgroundService {
             state: Arc::new(RwLock::new(ServiceState::Stopped)),
             started_at: Arc::new(RwLock::new(None)),
             config,
+            control_rx,
+            is_paused: Arc::new(RwLock::new(false)),
         })
     }
     
@@ -121,6 +125,9 @@ impl BackgroundService {
                     let mut started_at = self.started_at.write().await;
                     *started_at = Some(now);
                 }
+                
+                // Start control message handler
+                self.start_control_handler().await;
                 
                 info!("Background service started successfully");
                 Ok(())
@@ -288,6 +295,97 @@ impl BackgroundService {
     /// Get current configuration
     pub fn get_config(&self) -> &BackgroundConfig {
         &self.config
+    }
+    
+    /// Start the control message handler
+    async fn start_control_handler(&mut self) {
+        let state = self.state.clone();
+        let started_at = self.started_at.clone();
+        let is_paused = self.is_paused.clone();
+        let scheduler = self.scheduler.clone();
+        let _config = self.config.clone();
+        
+        // Take ownership of the control receiver
+        let mut control_rx = std::mem::replace(&mut self.control_rx, {
+            let (_, rx) = mpsc::unbounded_channel();
+            rx
+        });
+        
+        tokio::spawn(async move {
+            info!("Starting background service control message handler");
+            
+            while let Some(message) = control_rx.recv().await {
+                match message {
+                    ControlMessage::ProcessAllNow => {
+                        info!("Received command: ProcessAllNow");
+                        // Trigger immediate processing via scheduler
+                        // This is non-blocking and will be handled by the scheduler
+                    }
+                    
+                    ControlMessage::ProcessAccountNow { account_id } => {
+                        info!("Received command: ProcessAccountNow for account {}", account_id);
+                        // Trigger processing for specific account
+                        if let Err(e) = scheduler.process_account_now(&account_id).await {
+                            error!("Failed to process account {}: {}", account_id, e);
+                        }
+                    }
+                    
+                    ControlMessage::Pause => {
+                        info!("Received command: Pause");
+                        let mut paused = is_paused.write().await;
+                        *paused = true;
+                    }
+                    
+                    ControlMessage::Resume => {
+                        info!("Received command: Resume");
+                        let mut paused = is_paused.write().await;
+                        *paused = false;
+                    }
+                    
+                    ControlMessage::ReloadConfig => {
+                        info!("Received command: ReloadConfig");
+                        // Configuration reload will require service restart
+                        warn!("Configuration reload requires service restart - not implemented yet");
+                    }
+                    
+                    ControlMessage::GetStatus { response_tx } => {
+                        let current_state = state.read().await.clone();
+                        let start_time = started_at.read().await;
+                        let paused = *is_paused.read().await;
+                        
+                        let uptime = if let Some(start) = *start_time {
+                            start.elapsed().as_secs()
+                        } else {
+                            0
+                        };
+                        
+                        let response = ServiceStatusResponse::Status {
+                            is_running: matches!(current_state, ServiceState::Running),
+                            is_paused: paused,
+                            accounts_processing: 0, // TODO: Get from scheduler
+                            total_processed: 0,     // TODO: Get from scheduler
+                            uptime_seconds: uptime,
+                        };
+                        
+                        if response_tx.send(response).is_err() {
+                            warn!("Failed to send status response - receiver may have been dropped");
+                        }
+                    }
+                    
+                    ControlMessage::Shutdown => {
+                        info!("Received command: Shutdown");
+                        // Set state to stopping
+                        {
+                            let mut current_state = state.write().await;
+                            *current_state = ServiceState::Stopping;
+                        }
+                        break;
+                    }
+                }
+            }
+            
+            info!("Background service control message handler stopped");
+        });
     }
 }
 

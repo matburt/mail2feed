@@ -1,3 +1,4 @@
+pub mod background;
 pub mod health;
 pub mod imap_accounts;
 pub mod email_rules;
