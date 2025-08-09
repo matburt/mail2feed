@@ -17,6 +17,9 @@ pub struct CreateFeedRequest {
     pub email_rule_id: String,
     pub feed_type: String,
     pub is_active: bool,
+    pub max_items: Option<i32>,
+    pub max_age_days: Option<i32>,
+    pub min_items: Option<i32>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -27,6 +30,9 @@ pub struct UpdateFeedRequest {
     pub email_rule_id: String,
     pub feed_type: String,
     pub is_active: bool,
+    pub max_items: Option<i32>,
+    pub max_age_days: Option<i32>,
+    pub min_items: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,13 +98,16 @@ async fn create_feed(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    let new_feed = NewFeed::new(
+    let new_feed = NewFeed::with_retention(
         req.title,
         req.description,
         req.link,
         req.email_rule_id,
         req.feed_type,
         req.is_active,
+        req.max_items,
+        req.max_age_days,
+        req.min_items,
     );
 
     match FeedOps::create(&mut conn, &new_feed) {
@@ -136,13 +145,16 @@ async fn update_feed(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    let updated_feed = NewFeed::new(
+    let updated_feed = NewFeed::with_retention(
         req.title,
         req.description,
         req.link,
         req.email_rule_id,
         req.feed_type,
         req.is_active,
+        req.max_items,
+        req.max_age_days,
+        req.min_items,
     );
 
     match FeedOps::update(&mut conn, &id, &updated_feed) {

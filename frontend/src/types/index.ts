@@ -67,6 +67,9 @@ export interface Feed {
   is_active: boolean
   created_at: string
   updated_at: string
+  max_items?: number
+  max_age_days?: number
+  min_items?: number
 }
 
 export interface CreateFeedRequest {
@@ -76,6 +79,9 @@ export interface CreateFeedRequest {
   email_rule_id: string
   feed_type: string
   is_active: boolean
+  max_items?: number
+  max_age_days?: number
+  min_items?: number
 }
 
 export interface UpdateFeedRequest extends CreateFeedRequest {}
@@ -94,6 +100,25 @@ export interface FeedItem {
   email_from?: string
   email_body?: string
   created_at: string
+  is_read?: boolean
+  starred?: boolean
+  body_size?: number
+}
+
+export interface FeedItemMetadata {
+  id: string
+  title: string
+  pub_date: string
+  author?: string
+  is_read?: boolean
+  starred?: boolean
+  body_size?: number
+  created_at: string
+}
+
+export interface UpdateFeedItemRequest {
+  is_read?: boolean
+  starred?: boolean
 }
 
 // Processing Types

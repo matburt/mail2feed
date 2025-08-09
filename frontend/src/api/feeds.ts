@@ -2,8 +2,10 @@ import { apiClient } from './client'
 import type { 
   Feed, 
   FeedItem,
+  FeedItemMetadata,
   CreateFeedRequest, 
   UpdateFeedRequest,
+  UpdateFeedItemRequest,
   ProcessingStatus
 } from '../types'
 
@@ -33,6 +35,16 @@ export const feedsApi = {
     const params = limit ? `?limit=${limit}` : ''
     return apiClient.get<FeedItem[]>(`/api/feeds/${id}/items${params}`)
   },
+
+  // Get feed items metadata for management
+  getItemsMetadata: (id: string, limit?: number) => {
+    const params = limit ? `?limit=${limit}` : ''
+    return apiClient.get<FeedItemMetadata[]>(`/api/feeds/${id}/items/metadata${params}`)
+  },
+
+  // Update feed item (read status, starred status, etc.)
+  updateItem: (itemId: string, data: UpdateFeedItemRequest) => 
+    apiClient.patch<FeedItem>(`/api/feed-items/${itemId}`, data),
 
   // Get RSS feed content
   getRss: (id: string) => 

@@ -207,6 +207,34 @@ impl NewFeed {
             min_items: Some(10),        // Default: always keep at least 10 items
         }
     }
+
+    pub fn with_retention(
+        title: String,
+        description: Option<String>,
+        link: Option<String>,
+        email_rule_id: String,
+        feed_type: String,
+        is_active: bool,
+        max_items: Option<i32>,
+        max_age_days: Option<i32>,
+        min_items: Option<i32>,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4().to_string(),
+            title,
+            description,
+            link,
+            email_rule_id,
+            feed_type,
+            is_active,
+            created_at: now.to_rfc3339(),
+            updated_at: now.to_rfc3339(),
+            max_items: max_items.or(Some(100)),       // Default: keep last 100 items
+            max_age_days: max_age_days.or(Some(30)),  // Default: keep items for 30 days
+            min_items: min_items.or(Some(10)),        // Default: always keep at least 10 items
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]

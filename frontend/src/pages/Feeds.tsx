@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAppContext } from '../context/AppContext'
 import { feedsApi } from '../api/feeds'
 import { rulesApi } from '../api/rules'
-import type { Feed, EmailRule } from '../types'
+import type { EmailRule } from '../types'
 
 export default function Feeds() {
   const { state, dispatch } = useAppContext()
@@ -154,7 +154,7 @@ export default function Feeds() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {state.feeds.map((feed) => (
             <div key={feed.id} className="bg-white overflow-hidden shadow rounded-lg">
               <div className="p-5">
@@ -238,6 +238,13 @@ export default function Feeds() {
               <div className="bg-gray-50 px-5 py-3">
                 <div className="text-sm flex justify-between items-center">
                   <div className="flex space-x-2">
+                    <Link
+                      to={`/feeds/${feed.id}/items`}
+                      className="font-medium text-primary-700 hover:text-primary-900"
+                    >
+                      View Items
+                    </Link>
+                    <span className="text-gray-300">|</span>
                     <Link
                       to={`/feeds/${feed.id}/edit`}
                       className="font-medium text-primary-700 hover:text-primary-900"

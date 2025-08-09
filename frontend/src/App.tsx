@@ -10,6 +10,7 @@ import RuleEdit from './pages/RuleEdit'
 import Feeds from './pages/Feeds'
 import FeedNew from './pages/FeedNew'
 import FeedEdit from './pages/FeedEdit'
+import FeedItems from './pages/FeedItems'
 import NotFound from './pages/NotFound'
 import { AppProvider } from './context/AppContext'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
@@ -34,6 +35,7 @@ function App() {
                   <Route path="/feeds" element={<Feeds />} />
                   <Route path="/feeds/new" element={<FeedNew />} />
                   <Route path="/feeds/:id/edit" element={<FeedEdit />} />
+                  <Route path="/feeds/:id/items" element={<FeedItems />} />
                   <Route path="*" element={<NotFound />} />
                 </Routes>
               </ErrorBoundary>

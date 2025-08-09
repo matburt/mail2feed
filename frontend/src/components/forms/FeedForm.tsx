@@ -22,7 +22,10 @@ export default function FeedForm({ feed, onSubmit, onCancel }: FeedFormProps) {
     link: feed?.link || '',
     email_rule_id: feed?.email_rule_id || '',
     feed_type: feed?.feed_type || 'rss' as 'rss' | 'atom',
-    is_active: feed?.is_active ?? true
+    is_active: feed?.is_active ?? true,
+    max_items: feed?.max_items ?? 100,
+    max_age_days: feed?.max_age_days ?? 30,
+    min_items: feed?.min_items ?? 10
   })
 
   useEffect(() => {
@@ -48,11 +51,14 @@ export default function FeedForm({ feed, onSubmit, onCancel }: FeedFormProps) {
     if (feed) {
       setFormData({
         title: feed.title,
-        description: feed.description,
-        link: feed.link,
+        description: feed.description || '',
+        link: feed.link || '',
         email_rule_id: feed.email_rule_id,
         feed_type: feed.feed_type,
-        is_active: feed.is_active
+        is_active: feed.is_active,
+        max_items: feed.max_items ?? 100,
+        max_age_days: feed.max_age_days ?? 30,
+        min_items: feed.min_items ?? 10
       })
     }
   }, [feed])
@@ -80,6 +86,23 @@ export default function FeedForm({ feed, onSubmit, onCancel }: FeedFormProps) {
     
     if (!formData.email_rule_id) {
       newErrors.email_rule_id = 'Email rule is required'
+    }
+
+    // Retention policy validation
+    if (formData.max_items <= 0) {
+      newErrors.max_items = 'Max items must be greater than 0'
+    }
+
+    if (formData.max_age_days <= 0) {
+      newErrors.max_age_days = 'Max age must be greater than 0'
+    }
+
+    if (formData.min_items < 0) {
+      newErrors.min_items = 'Min items cannot be negative'
+    }
+
+    if (formData.min_items > formData.max_items) {
+      newErrors.min_items = 'Min items cannot exceed max items'
     }
     
     setErrors(newErrors)
@@ -133,9 +156,18 @@ export default function FeedForm({ feed, onSubmit, onCancel }: FeedFormProps) {
     const { name, value, type } = e.target
     const checked = (e.target as HTMLInputElement).checked
     
+    let processedValue: string | number | boolean = value
+    
+    // Handle number inputs
+    if (type === 'number') {
+      processedValue = value === '' ? 0 : parseInt(value, 10)
+    } else if (type === 'checkbox') {
+      processedValue = checked
+    }
+    
     setFormData(prev => ({
       ...prev,
-      [name]: type === 'checkbox' ? checked : value
+      [name]: processedValue
     }))
     
     // Clear error when user starts typing
@@ -319,6 +351,101 @@ export default function FeedForm({ feed, onSubmit, onCancel }: FeedFormProps) {
             <p className="mt-1 text-xs text-gray-500">
               Both types will be available regardless of this setting
             </p>
+          </div>
+        </div>
+
+        {/* Retention Policy Section */}
+        <div className="sm:col-span-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Feed Retention Policy</h3>
+          <p className="text-sm text-gray-600 mb-4">
+            Configure how long feed items are kept and how many items to retain. These settings help manage storage and performance.
+          </p>
+        </div>
+
+        {/* Max Items */}
+        <div className="sm:col-span-2">
+          <label htmlFor="max_items" className="block text-sm font-medium text-gray-700">
+            Max Items
+          </label>
+          <div className="mt-1">
+            <input
+              type="number"
+              name="max_items"
+              id="max_items"
+              min="1"
+              value={formData.max_items}
+              onChange={handleChange}
+              className={`block w-full shadow-sm sm:text-sm rounded-md ${
+                errors.max_items 
+                  ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                  : 'border-gray-300 focus:ring-primary-500 focus:border-primary-500'
+              }`}
+              placeholder="100"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Maximum number of items to keep in the feed
+            </p>
+            {errors.max_items && (
+              <p className="mt-2 text-sm text-red-600">{errors.max_items}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Max Age Days */}
+        <div className="sm:col-span-2">
+          <label htmlFor="max_age_days" className="block text-sm font-medium text-gray-700">
+            Max Age (Days)
+          </label>
+          <div className="mt-1">
+            <input
+              type="number"
+              name="max_age_days"
+              id="max_age_days"
+              min="1"
+              value={formData.max_age_days}
+              onChange={handleChange}
+              className={`block w-full shadow-sm sm:text-sm rounded-md ${
+                errors.max_age_days 
+                  ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                  : 'border-gray-300 focus:ring-primary-500 focus:border-primary-500'
+              }`}
+              placeholder="30"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Maximum age in days before items are removed
+            </p>
+            {errors.max_age_days && (
+              <p className="mt-2 text-sm text-red-600">{errors.max_age_days}</p>
+            )}
+          </div>
+        </div>
+
+        {/* Min Items */}
+        <div className="sm:col-span-2">
+          <label htmlFor="min_items" className="block text-sm font-medium text-gray-700">
+            Min Items
+          </label>
+          <div className="mt-1">
+            <input
+              type="number"
+              name="min_items"
+              id="min_items"
+              min="0"
+              value={formData.min_items}
+              onChange={handleChange}
+              className={`block w-full shadow-sm sm:text-sm rounded-md ${
+                errors.min_items 
+                  ? 'border-red-300 focus:ring-red-500 focus:border-red-500' 
+                  : 'border-gray-300 focus:ring-primary-500 focus:border-primary-500'
+              }`}
+              placeholder="10"
+            />
+            <p className="mt-1 text-xs text-gray-500">
+              Minimum items to always keep (overrides age limit)
+            </p>
+            {errors.min_items && (
+              <p className="mt-2 text-sm text-red-600">{errors.min_items}</p>
+            )}
           </div>
         </div>
 

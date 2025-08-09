@@ -17,7 +17,7 @@ export class ApiError extends Error {
 
 
 // HTTP methods
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE'
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
 
 // Request options
 interface RequestOptions {
@@ -94,6 +94,9 @@ export const apiClient = {
   
   put: <T>(endpoint: string, data: any) => 
     apiFetch<T>(endpoint, { method: 'PUT', body: data }),
+  
+  patch: <T>(endpoint: string, data: any) => 
+    apiFetch<T>(endpoint, { method: 'PATCH', body: data }),
   
   delete: <T>(endpoint: string) => 
     apiFetch<T>(endpoint, { method: 'DELETE' }),
