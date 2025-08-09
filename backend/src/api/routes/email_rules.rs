@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use crate::api::AppState;
-use crate::db::{operations::EmailRuleOps, models::NewEmailRule};
+use crate::db::{operations::{EmailRuleOps, ImapAccountOps}, models::NewEmailRule};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateEmailRuleRequest {
@@ -18,6 +18,10 @@ pub struct CreateEmailRuleRequest {
     pub subject_contains: Option<String>,
     pub label: Option<String>,
     pub is_active: bool,
+    pub post_process_action: Option<String>,  // Optional - inherits from account if not provided
+    pub move_to_folder: Option<String>,
+    #[serde(default)]
+    pub inherit_account_defaults: bool,  // If true, ignore post_process_action and move_to_folder
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -30,6 +34,10 @@ pub struct UpdateEmailRuleRequest {
     pub subject_contains: Option<String>,
     pub label: Option<String>,
     pub is_active: bool,
+    pub post_process_action: Option<String>,  // Optional - inherits from account if not provided
+    pub move_to_folder: Option<String>,
+    #[serde(default)]
+    pub inherit_account_defaults: bool,  // If true, ignore post_process_action and move_to_folder
 }
 
 #[derive(Debug, Serialize)]
@@ -67,16 +75,39 @@ async fn create_rule(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    let new_rule = NewEmailRule::new(
-        req.name,
-        req.imap_account_id,
-        req.folder,
-        req.to_address,
-        req.from_address,
-        req.subject_contains,
-        req.label,
-        req.is_active,
-    );
+    let new_rule = if req.inherit_account_defaults {
+        // Get the account to inherit defaults
+        match ImapAccountOps::get_by_id(&mut conn, &req.imap_account_id) {
+            Ok(account) => {
+                NewEmailRule::from_account_defaults(
+                    req.name,
+                    &account,
+                    req.folder,
+                    req.to_address,
+                    req.from_address,
+                    req.subject_contains,
+                    req.label,
+                    req.is_active,
+                )
+            }
+            Err(e) => return (StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: format!("Invalid account ID: {}", e) })).into_response(),
+        }
+    } else {
+        // Use provided values or defaults
+        NewEmailRule::with_defaults(
+            req.name,
+            req.imap_account_id,
+            req.folder,
+            req.to_address,
+            req.from_address,
+            req.subject_contains,
+            req.label,
+            req.is_active,
+            req.post_process_action.unwrap_or_else(|| "mark_read".to_string()),
+            req.move_to_folder,
+        )
+    };
 
     match EmailRuleOps::create(&mut conn, &new_rule) {
         Ok(rule) => (StatusCode::CREATED, Json(rule)).into_response(),
@@ -113,16 +144,39 @@ async fn update_rule(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    let updated_rule = NewEmailRule::new(
-        req.name,
-        req.imap_account_id,
-        req.folder,
-        req.to_address,
-        req.from_address,
-        req.subject_contains,
-        req.label,
-        req.is_active,
-    );
+    let updated_rule = if req.inherit_account_defaults {
+        // Get the account to inherit defaults
+        match ImapAccountOps::get_by_id(&mut conn, &req.imap_account_id) {
+            Ok(account) => {
+                NewEmailRule::from_account_defaults(
+                    req.name,
+                    &account,
+                    req.folder,
+                    req.to_address,
+                    req.from_address,
+                    req.subject_contains,
+                    req.label,
+                    req.is_active,
+                )
+            }
+            Err(e) => return (StatusCode::BAD_REQUEST,
+                Json(ErrorResponse { error: format!("Invalid account ID: {}", e) })).into_response(),
+        }
+    } else {
+        // Use provided values or defaults
+        NewEmailRule::with_defaults(
+            req.name,
+            req.imap_account_id,
+            req.folder,
+            req.to_address,
+            req.from_address,
+            req.subject_contains,
+            req.label,
+            req.is_active,
+            req.post_process_action.unwrap_or_else(|| "mark_read".to_string()),
+            req.move_to_folder,
+        )
+    };
 
     match EmailRuleOps::update(&mut conn, &id, &updated_rule) {
         Ok(rule) => Json(rule).into_response(),

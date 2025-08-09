@@ -16,6 +16,9 @@ pub struct CreateImapAccountRequest {
     pub username: String,
     pub password: String,
     pub use_tls: bool,
+    #[serde(default = "default_post_process_action")]
+    pub default_post_process_action: String,
+    pub default_move_to_folder: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -26,6 +29,13 @@ pub struct UpdateImapAccountRequest {
     pub username: String,
     pub password: String,
     pub use_tls: bool,
+    #[serde(default = "default_post_process_action")]
+    pub default_post_process_action: String,
+    pub default_move_to_folder: Option<String>,
+}
+
+fn default_post_process_action() -> String {
+    "mark_read".to_string()
 }
 
 #[derive(Debug, Serialize)]
@@ -63,13 +73,15 @@ async fn create_account(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    let new_account = NewImapAccount::new(
+    let new_account = NewImapAccount::with_defaults(
         req.name,
         req.host,
         req.port,
         req.username,
         req.password,
         req.use_tls,
+        req.default_post_process_action,
+        req.default_move_to_folder,
     );
 
     match ImapAccountOps::create(&mut conn, &new_account) {
@@ -107,13 +119,15 @@ async fn update_account(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    let updated_account = NewImapAccount::new(
+    let updated_account = NewImapAccount::with_defaults(
         req.name,
         req.host,
         req.port,
         req.username,
         req.password,
         req.use_tls,
+        req.default_post_process_action,
+        req.default_move_to_folder,
     );
 
     match ImapAccountOps::update(&mut conn, &id, &updated_account) {

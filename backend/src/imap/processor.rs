@@ -262,25 +262,25 @@ impl EmailProcessor {
                 Ok(())
             }
             EmailAction::MarkAsRead => {
-                client.mark_as_read(email.uid)
+                client.mark_as_read_in_folder(email.uid, &rule.folder)
                     .await
-                    .with_context(|| format!("Failed to mark email {} as read", email.uid))?;
-                info!("Marked email '{}' as read", email.subject);
+                    .with_context(|| format!("Failed to mark email {} as read in folder '{}'", email.uid, rule.folder))?;
+                info!("Marked email '{}' as read in folder '{}'", email.subject, rule.folder);
                 Ok(())
             }
             EmailAction::Delete => {
-                client.delete_email(email.uid)
+                client.delete_email_in_folder(email.uid, &rule.folder)
                     .await
-                    .with_context(|| format!("Failed to delete email {}", email.uid))?;
-                info!("Deleted email '{}'", email.subject);
+                    .with_context(|| format!("Failed to delete email {} from folder '{}'", email.uid, rule.folder))?;
+                info!("Deleted email '{}' from folder '{}'", email.subject, rule.folder);
                 Ok(())
             }
             EmailAction::MoveToFolder => {
                 if let Some(target_folder) = &rule.move_to_folder {
-                    client.move_to_folder(email.uid, target_folder)
+                    client.move_to_folder_from_folder(email.uid, &rule.folder, target_folder)
                         .await
-                        .with_context(|| format!("Failed to move email {} to folder {}", email.uid, target_folder))?;
-                    info!("Moved email '{}' to folder '{}'", email.subject, target_folder);
+                        .with_context(|| format!("Failed to move email {} from '{}' to folder '{}'", email.uid, rule.folder, target_folder))?;
+                    info!("Moved email '{}' from '{}' to folder '{}'", email.subject, rule.folder, target_folder);
                     Ok(())
                 } else {
                     warn!("Move action configured but no target folder specified for rule '{}'", rule.name);

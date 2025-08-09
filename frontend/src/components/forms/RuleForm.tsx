@@ -25,7 +25,10 @@ export default function RuleForm({ rule, onSubmit, onCancel }: RuleFormProps) {
     from_address: rule?.from_address || '',
     subject_contains: rule?.subject_contains || '',
     label: rule?.label || '',
-    is_active: rule?.is_active ?? true
+    is_active: rule?.is_active ?? true,
+    post_process_action: rule?.post_process_action || '',
+    move_to_folder: rule?.move_to_folder || '',
+    inherit_account_defaults: !rule // Default to true for new rules
   })
 
   // State for manual folder input
@@ -76,7 +79,10 @@ export default function RuleForm({ rule, onSubmit, onCancel }: RuleFormProps) {
         from_address: rule.from_address || '',
         subject_contains: rule.subject_contains || '',
         label: rule.label || '',
-        is_active: rule.is_active
+        is_active: rule.is_active,
+        post_process_action: rule.post_process_action || '',
+        move_to_folder: rule.move_to_folder || '',
+        inherit_account_defaults: false // Existing rules don't inherit by default
       })
     }
   }, [rule])
@@ -127,7 +133,9 @@ export default function RuleForm({ rule, onSubmit, onCancel }: RuleFormProps) {
         to_address: formData.to_address.trim() || undefined,
         from_address: formData.from_address.trim() || undefined,
         subject_contains: formData.subject_contains.trim() || undefined,
-        label: formData.label.trim() || undefined
+        label: formData.label.trim() || undefined,
+        post_process_action: formData.inherit_account_defaults ? undefined : (formData.post_process_action || undefined),
+        move_to_folder: formData.inherit_account_defaults ? undefined : (formData.move_to_folder.trim() || undefined)
       }
       
       if (rule) {
@@ -486,24 +494,110 @@ export default function RuleForm({ rule, onSubmit, onCancel }: RuleFormProps) {
           </div>
         </div>
 
-        {/* Is Active */}
-        <div className="sm:col-span-6">
-          <div className="flex items-center">
-            <input
-              type="checkbox"
-              name="is_active"
-              id="is_active"
-              checked={formData.is_active}
-              onChange={handleChange}
-              className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
-            />
-            <label htmlFor="is_active" className="ml-2 block text-sm text-gray-900">
-              Rule is active
-            </label>
+      </div>
+
+      {/* Email Handling Settings */}
+      <div className="border-t border-gray-200 pt-6">
+        <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Email Handling</h3>
+        
+        <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+          {/* Inherit Account Defaults */}
+          <div className="sm:col-span-6">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                name="inherit_account_defaults"
+                id="inherit_account_defaults"
+                checked={formData.inherit_account_defaults}
+                onChange={handleChange}
+                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+              />
+              <label htmlFor="inherit_account_defaults" className="ml-2 block text-sm text-gray-900">
+                Use account default email handling
+              </label>
+            </div>
+            <p className="mt-2 text-sm text-gray-500">
+              When enabled, this rule will use the default email handling settings from the IMAP account.
+            </p>
           </div>
-          <p className="mt-2 text-sm text-gray-500">
-            Inactive rules will not process new emails but existing feeds remain accessible.
-          </p>
+
+          {/* Custom Email Handling - only show when not inheriting */}
+          {!formData.inherit_account_defaults && (
+            <>
+              {/* Post Process Action */}
+              <div className="sm:col-span-4">
+                <label htmlFor="post_process_action" className="block text-sm font-medium text-gray-700">
+                  Action After Processing
+                </label>
+                <div className="mt-1">
+                  <select
+                    name="post_process_action"
+                    id="post_process_action"
+                    value={formData.post_process_action}
+                    onChange={handleChange}
+                    className="block w-full shadow-sm sm:text-sm rounded-md border-gray-300 focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    <option value="">Use account default</option>
+                    <option value="do_nothing">Do Nothing</option>
+                    <option value="mark_read">Mark as Read</option>
+                    <option value="delete">Delete Email</option>
+                    <option value="move_to_folder">Move to Folder</option>
+                  </select>
+                  <p className="mt-1 text-sm text-gray-500">
+                    What to do with emails after they've been processed into feed items
+                  </p>
+                </div>
+              </div>
+
+              {/* Move to Folder */}
+              {formData.post_process_action === 'move_to_folder' && (
+                <div className="sm:col-span-4">
+                  <label htmlFor="move_to_folder" className="block text-sm font-medium text-gray-700">
+                    Target Folder
+                  </label>
+                  <div className="mt-1">
+                    <input
+                      type="text"
+                      name="move_to_folder"
+                      id="move_to_folder"
+                      value={formData.move_to_folder}
+                      onChange={handleChange}
+                      className="block w-full shadow-sm sm:text-sm rounded-md border-gray-300 focus:ring-primary-500 focus:border-primary-500"
+                      placeholder="Processed"
+                    />
+                    <p className="mt-1 text-sm text-gray-500">
+                      Folder name to move emails to after processing
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Rule Status */}
+      <div className="border-t border-gray-200 pt-6">
+        <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+          {/* Is Active */}
+          <div className="sm:col-span-6">
+            <div className="flex items-center">
+              <input
+                type="checkbox"
+                name="is_active"
+                id="is_active"
+                checked={formData.is_active}
+                onChange={handleChange}
+                className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+              />
+              <label htmlFor="is_active" className="ml-2 block text-sm text-gray-900">
+                Rule is active
+              </label>
+            </div>
+            <p className="mt-2 text-sm text-gray-500">
+              Inactive rules will not process new emails but existing feeds remain accessible.
+            </p>
+          </div>
         </div>
       </div>
 

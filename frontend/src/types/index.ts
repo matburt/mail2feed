@@ -4,6 +4,9 @@ export interface ApiResponse<T> {
   error?: string
 }
 
+// Email Action Types
+export type EmailAction = 'do_nothing' | 'mark_read' | 'delete' | 'move_to_folder'
+
 // IMAP Account Types
 export interface ImapAccount {
   id: string
@@ -15,6 +18,8 @@ export interface ImapAccount {
   use_tls: boolean
   created_at: string
   updated_at: string
+  default_post_process_action: string
+  default_move_to_folder?: string
 }
 
 export interface CreateImapAccountRequest {
@@ -24,6 +29,8 @@ export interface CreateImapAccountRequest {
   username: string
   password: string
   use_tls: boolean
+  default_post_process_action?: string
+  default_move_to_folder?: string
 }
 
 export interface UpdateImapAccountRequest extends CreateImapAccountRequest {}
@@ -41,6 +48,8 @@ export interface EmailRule {
   is_active: boolean
   created_at: string
   updated_at: string
+  post_process_action: string
+  move_to_folder?: string
 }
 
 export interface CreateEmailRuleRequest {
@@ -52,6 +61,9 @@ export interface CreateEmailRuleRequest {
   subject_contains?: string
   label?: string
   is_active: boolean
+  post_process_action?: string
+  move_to_folder?: string
+  inherit_account_defaults?: boolean
 }
 
 export interface UpdateEmailRuleRequest extends CreateEmailRuleRequest {}

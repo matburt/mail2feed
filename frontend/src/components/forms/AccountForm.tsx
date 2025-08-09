@@ -25,7 +25,9 @@ export default function AccountForm({ account, onSubmit, onCancel }: AccountForm
     port: account?.port || 993,
     username: account?.username || '',
     password: account?.password || '',
-    use_tls: account?.use_tls ?? true
+    use_tls: account?.use_tls ?? true,
+    default_post_process_action: account?.default_post_process_action || 'mark_read',
+    default_move_to_folder: account?.default_move_to_folder || ''
   })
 
   useEffect(() => {
@@ -36,7 +38,9 @@ export default function AccountForm({ account, onSubmit, onCancel }: AccountForm
         port: account.port,
         username: account.username,
         password: account.password,
-        use_tls: account.use_tls
+        use_tls: account.use_tls,
+        default_post_process_action: account.default_post_process_action,
+        default_move_to_folder: account.default_move_to_folder || ''
       })
     }
   }, [account])
@@ -123,12 +127,15 @@ export default function AccountForm({ account, onSubmit, onCancel }: AccountForm
         
         try {
           const result = await accountsApi.testConnection(tempAccount.id)
-          setTestResult(result)
+          setTestResult({
+            success: result.success,
+            message: result.success ? 'Successfully connected to IMAP server' : (result.error || 'Connection failed')
+          })
           
           if (result.success) {
             toast.success('Connection test passed', 'Successfully connected to IMAP server')
           } else {
-            toast.error('Connection test failed', result.message)
+            toast.error('Connection test failed', result.error || 'Connection failed')
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : 'Connection test failed'
@@ -147,7 +154,10 @@ export default function AccountForm({ account, onSubmit, onCancel }: AccountForm
         const updateData: UpdateImapAccountRequest = formData
         await accountsApi.update(account.id, updateData)
         const result = await accountsApi.testConnection(account.id)
-        setTestResult(result)
+        setTestResult({
+          success: result.success,
+          message: result.success ? 'Successfully connected to IMAP server' : (result.error || 'Connection failed')
+        })
       }
     } catch (error) {
       setTestResult({
@@ -167,8 +177,10 @@ export default function AccountForm({ account, onSubmit, onCancel }: AccountForm
     }
   }
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const { name, value, type } = e.target
+    const checked = 'checked' in e.target ? e.target.checked : false
+    
     setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : type === 'number' ? parseInt(value) || 0 : value
@@ -423,6 +435,65 @@ export default function AccountForm({ account, onSubmit, onCancel }: AccountForm
           <p id="use_tls-description" className="mt-2 text-sm text-gray-500">
             Recommended for secure connections. Most email providers require TLS.
           </p>
+        </div>
+      </div>
+
+      {/* Email Handling Settings */}
+      <div className="border-t border-gray-200 pt-6">
+        <h3 className="text-lg font-medium leading-6 text-gray-900 mb-4">Default Email Handling</h3>
+        <p className="text-sm text-gray-500 mb-6">
+          These settings will be used as defaults for new email rules. Individual rules can override these settings.
+        </p>
+        
+        <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
+          {/* Default Post Process Action */}
+          <div className="sm:col-span-4">
+            <label htmlFor="default_post_process_action" className="block text-sm font-medium text-gray-700">
+              Default Action After Processing
+            </label>
+            <div className="mt-1">
+              <select
+                name="default_post_process_action"
+                id="default_post_process_action"
+                value={formData.default_post_process_action}
+                onChange={handleChange}
+                aria-describedby="default_post_process_action-description"
+                className="block w-full shadow-sm sm:text-sm rounded-md border-gray-300 focus:ring-primary-500 focus:border-primary-500"
+              >
+                <option value="do_nothing">Do Nothing</option>
+                <option value="mark_read">Mark as Read</option>
+                <option value="delete">Delete Email</option>
+                <option value="move_to_folder">Move to Folder</option>
+              </select>
+              <p id="default_post_process_action-description" className="mt-1 text-sm text-gray-500">
+                What to do with emails after they've been processed into feed items
+              </p>
+            </div>
+          </div>
+
+          {/* Default Move to Folder */}
+          {formData.default_post_process_action === 'move_to_folder' && (
+            <div className="sm:col-span-4">
+              <label htmlFor="default_move_to_folder" className="block text-sm font-medium text-gray-700">
+                Default Target Folder
+              </label>
+              <div className="mt-1">
+                <input
+                  type="text"
+                  name="default_move_to_folder"
+                  id="default_move_to_folder"
+                  value={formData.default_move_to_folder}
+                  onChange={handleChange}
+                  aria-describedby="default_move_to_folder-description"
+                  className="block w-full shadow-sm sm:text-sm rounded-md border-gray-300 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="Processed"
+                />
+                <p id="default_move_to_folder-description" className="mt-1 text-sm text-gray-500">
+                  Folder name to move emails to (leave empty to use rule-specific folders)
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

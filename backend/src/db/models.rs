@@ -49,6 +49,8 @@ pub struct ImapAccount {
     pub use_tls: bool,
     pub created_at: String,
     pub updated_at: String,
+    pub default_post_process_action: String,
+    pub default_move_to_folder: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
@@ -63,6 +65,8 @@ pub struct NewImapAccount {
     pub use_tls: bool,
     pub created_at: String,
     pub updated_at: String,
+    pub default_post_process_action: String,
+    pub default_move_to_folder: Option<String>,
 }
 
 impl NewImapAccount {
@@ -78,6 +82,25 @@ impl NewImapAccount {
             use_tls,
             created_at: now.to_rfc3339(),
             updated_at: now.to_rfc3339(),
+            default_post_process_action: "mark_read".to_string(),
+            default_move_to_folder: None,
+        }
+    }
+    
+    pub fn with_defaults(name: String, host: String, port: i32, username: String, password: String, use_tls: bool, default_post_process_action: String, default_move_to_folder: Option<String>) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name,
+            host,
+            port,
+            username,
+            password,
+            use_tls,
+            created_at: now.to_rfc3339(),
+            updated_at: now.to_rfc3339(),
+            default_post_process_action,
+            default_move_to_folder,
         }
     }
 }
@@ -145,6 +168,60 @@ impl NewEmailRule {
             post_process_action: "mark_read".to_string(),
             move_to_folder: None,
         }
+    }
+    
+    pub fn with_defaults(
+        name: String,
+        imap_account_id: String,
+        folder: String,
+        to_address: Option<String>,
+        from_address: Option<String>,
+        subject_contains: Option<String>,
+        label: Option<String>,
+        is_active: bool,
+        post_process_action: String,
+        move_to_folder: Option<String>,
+    ) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4().to_string(),
+            name,
+            imap_account_id,
+            folder,
+            to_address,
+            from_address,
+            subject_contains,
+            label,
+            is_active,
+            created_at: now.to_rfc3339(),
+            updated_at: now.to_rfc3339(),
+            post_process_action,
+            move_to_folder,
+        }
+    }
+    
+    pub fn from_account_defaults(
+        name: String,
+        imap_account: &ImapAccount,
+        folder: String,
+        to_address: Option<String>,
+        from_address: Option<String>,
+        subject_contains: Option<String>,
+        label: Option<String>,
+        is_active: bool,
+    ) -> Self {
+        Self::with_defaults(
+            name,
+            imap_account.id.as_ref().unwrap_or(&String::new()).clone(),
+            folder,
+            to_address,
+            from_address,
+            subject_contains,
+            label,
+            is_active,
+            imap_account.default_post_process_action.clone(),
+            imap_account.default_move_to_folder.clone(),
+        )
     }
 }
 

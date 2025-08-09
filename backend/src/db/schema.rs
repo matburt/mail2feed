@@ -66,6 +66,8 @@ diesel::table! {
         use_tls -> Bool,
         created_at -> Text,
         updated_at -> Text,
+        default_post_process_action -> Text,
+        default_move_to_folder -> Nullable<Text>,
     }
 }
 

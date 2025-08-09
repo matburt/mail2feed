@@ -592,24 +592,189 @@ impl ImapClient {
         Ok(vec![])
     }
     
-    /// Mark an email as read by UID
+    /// Mark an email as read by UID in a specific folder
     pub async fn mark_as_read(&self, uid: u32) -> Result<()> {
-        info!("Marking email {} as read (placeholder implementation)", uid);
-        // TODO: Implement actual mark as read functionality
+        self.mark_as_read_in_folder(uid, "INBOX").await
+    }
+    
+    /// Mark an email as read by UID in a specific folder
+    pub async fn mark_as_read_in_folder(&self, uid: u32, folder: &str) -> Result<()> {
+        info!("Marking email UID {} as read in folder '{}'", uid, folder);
+        
+        let account = self.account.clone();
+        let folder = folder.to_string();
+        
+        tokio::task::spawn_blocking(move || {
+            if account.use_tls {
+                Self::mark_as_read_tls_sync(&account, uid, &folder)
+            } else {
+                Self::mark_as_read_plain_sync(&account, uid, &folder)
+            }
+        })
+        .await
+        .unwrap()
+    }
+    
+    fn mark_as_read_tls_sync(account: &ImapAccount, uid: u32, folder: &str) -> Result<()> {
+        let mut session = Self::connect_tls_sync(account)?;
+        Self::mark_as_read_with_session(&mut session, uid, folder)
+    }
+    
+    fn mark_as_read_plain_sync(account: &ImapAccount, uid: u32, folder: &str) -> Result<()> {
+        let mut session = Self::connect_plain_sync(account)?;
+        Self::mark_as_read_with_session(&mut session, uid, folder)
+    }
+    
+    fn mark_as_read_with_session<T>(session: &mut imap::Session<T>, uid: u32, folder: &str) -> Result<()>
+    where
+        T: std::io::Read + std::io::Write
+    {
+        // Select the folder first
+        session.select(folder)
+            .with_context(|| format!("Failed to select folder '{}' to mark email as read", folder))?;
+        
+        // Use UID STORE command to add the \Seen flag
+        session.uid_store(format!("{}", uid), "+FLAGS.SILENT (\\Seen)")
+            .with_context(|| format!("Failed to mark email UID {} as read", uid))?;
+            
+        info!("Successfully marked email UID {} as read in folder '{}'", uid, folder);
+        
+        if let Err(e) = session.logout() {
+            warn!("Logout failed after marking email as read: {}", e);
+        }
+        
         Ok(())
     }
     
     /// Delete an email by UID
     pub async fn delete_email(&self, uid: u32) -> Result<()> {
-        info!("Deleting email {} (placeholder implementation)", uid);
-        // TODO: Implement actual email deletion functionality
+        self.delete_email_in_folder(uid, "INBOX").await
+    }
+    
+    /// Delete an email by UID in a specific folder
+    pub async fn delete_email_in_folder(&self, uid: u32, folder: &str) -> Result<()> {
+        info!("Deleting email UID {} in folder '{}'", uid, folder);
+        
+        let account = self.account.clone();
+        let folder = folder.to_string();
+        
+        tokio::task::spawn_blocking(move || {
+            if account.use_tls {
+                Self::delete_email_tls_sync(&account, uid, &folder)
+            } else {
+                Self::delete_email_plain_sync(&account, uid, &folder)
+            }
+        })
+        .await
+        .unwrap()
+    }
+    
+    fn delete_email_tls_sync(account: &ImapAccount, uid: u32, folder: &str) -> Result<()> {
+        let mut session = Self::connect_tls_sync(account)?;
+        Self::delete_email_with_session(&mut session, uid, folder)
+    }
+    
+    fn delete_email_plain_sync(account: &ImapAccount, uid: u32, folder: &str) -> Result<()> {
+        let mut session = Self::connect_plain_sync(account)?;
+        Self::delete_email_with_session(&mut session, uid, folder)
+    }
+    
+    fn delete_email_with_session<T>(session: &mut imap::Session<T>, uid: u32, folder: &str) -> Result<()>
+    where
+        T: std::io::Read + std::io::Write
+    {
+        // Select the folder first
+        session.select(folder)
+            .with_context(|| format!("Failed to select folder '{}' to delete email", folder))?;
+        
+        // Mark email as deleted using UID STORE
+        session.uid_store(format!("{}", uid), "+FLAGS.SILENT (\\Deleted)")
+            .with_context(|| format!("Failed to mark email UID {} as deleted", uid))?;
+        
+        // Expunge to actually remove the email
+        session.expunge()
+            .with_context(|| format!("Failed to expunge email UID {} after marking as deleted", uid))?;
+            
+        info!("Successfully deleted email UID {} from folder '{}'", uid, folder);
+        
+        if let Err(e) = session.logout() {
+            warn!("Logout failed after deleting email: {}", e);
+        }
+        
         Ok(())
     }
     
     /// Move an email to another folder by UID
     pub async fn move_to_folder(&self, uid: u32, target_folder: &str) -> Result<()> {
-        info!("Moving email {} to folder '{}' (placeholder implementation)", uid, target_folder);
-        // TODO: Implement actual email move functionality
+        self.move_to_folder_from_folder(uid, "INBOX", target_folder).await
+    }
+    
+    /// Move an email to another folder by UID from a specific source folder
+    pub async fn move_to_folder_from_folder(&self, uid: u32, source_folder: &str, target_folder: &str) -> Result<()> {
+        info!("Moving email UID {} from folder '{}' to folder '{}'", uid, source_folder, target_folder);
+        
+        let account = self.account.clone();
+        let source_folder = source_folder.to_string();
+        let target_folder = target_folder.to_string();
+        
+        tokio::task::spawn_blocking(move || {
+            if account.use_tls {
+                Self::move_to_folder_tls_sync(&account, uid, &source_folder, &target_folder)
+            } else {
+                Self::move_to_folder_plain_sync(&account, uid, &source_folder, &target_folder)
+            }
+        })
+        .await
+        .unwrap()
+    }
+    
+    fn move_to_folder_tls_sync(account: &ImapAccount, uid: u32, source_folder: &str, target_folder: &str) -> Result<()> {
+        let mut session = Self::connect_tls_sync(account)?;
+        Self::move_to_folder_with_session(&mut session, uid, source_folder, target_folder)
+    }
+    
+    fn move_to_folder_plain_sync(account: &ImapAccount, uid: u32, source_folder: &str, target_folder: &str) -> Result<()> {
+        let mut session = Self::connect_plain_sync(account)?;
+        Self::move_to_folder_with_session(&mut session, uid, source_folder, target_folder)
+    }
+    
+    fn move_to_folder_with_session<T>(session: &mut imap::Session<T>, uid: u32, source_folder: &str, target_folder: &str) -> Result<()>
+    where
+        T: std::io::Read + std::io::Write
+    {
+        // Select the source folder first
+        session.select(source_folder)
+            .with_context(|| format!("Failed to select source folder '{}' to move email", source_folder))?;
+        
+        // Try UID MOVE command first (modern IMAP extension)
+        match session.uid_mv(format!("{}", uid), target_folder) {
+            Ok(_) => {
+                info!("Successfully moved email UID {} from '{}' to folder '{}' using UID MOVE", uid, source_folder, target_folder);
+            }
+            Err(_) => {
+                // Fallback to copy + delete for servers that don't support MOVE
+                warn!("UID MOVE not supported, using COPY + DELETE fallback");
+                
+                // Copy the email to the target folder
+                session.uid_copy(format!("{}", uid), target_folder)
+                    .with_context(|| format!("Failed to copy email UID {} to folder '{}'", uid, target_folder))?;
+                
+                // Mark original email as deleted
+                session.uid_store(format!("{}", uid), "+FLAGS.SILENT (\\Deleted)")
+                    .with_context(|| format!("Failed to mark email UID {} as deleted after copy", uid))?;
+                
+                // Expunge to remove the original
+                session.expunge()
+                    .with_context(|| format!("Failed to expunge email UID {} after copy", uid))?;
+                
+                info!("Successfully moved email UID {} from '{}' to folder '{}' using COPY + DELETE", uid, source_folder, target_folder);
+            }
+        }
+        
+        if let Err(e) = session.logout() {
+            warn!("Logout failed after moving email: {}", e);
+        }
+        
         Ok(())
     }
 }
