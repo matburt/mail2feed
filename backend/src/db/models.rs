@@ -5,10 +5,42 @@ use uuid::Uuid;
 
 use crate::db::schema::*;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EmailAction {
+    #[serde(rename = "mark_read")]
+    MarkAsRead,
+    #[serde(rename = "delete")]
+    Delete,
+    #[serde(rename = "move_to_folder")]
+    MoveToFolder,
+    #[serde(rename = "do_nothing")]
+    DoNothing,
+}
+
+impl EmailAction {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            EmailAction::MarkAsRead => "mark_read",
+            EmailAction::Delete => "delete", 
+            EmailAction::MoveToFolder => "move_to_folder",
+            EmailAction::DoNothing => "do_nothing",
+        }
+    }
+    
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "delete" => EmailAction::Delete,
+            "move_to_folder" => EmailAction::MoveToFolder,
+            "do_nothing" => EmailAction::DoNothing,
+            _ => EmailAction::MarkAsRead, // Default
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
 #[diesel(table_name = imap_accounts)]
 pub struct ImapAccount {
-    pub id: String,
+    pub id: Option<String>,    // Changed to match Nullable<Text> in schema
     pub name: String,
     pub host: String,
     pub port: i32,
@@ -53,7 +85,7 @@ impl NewImapAccount {
 #[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
 #[diesel(table_name = email_rules)]
 pub struct EmailRule {
-    pub id: String,
+    pub id: Option<String>,
     pub name: String,
     pub imap_account_id: String,
     pub folder: String,
@@ -64,6 +96,8 @@ pub struct EmailRule {
     pub is_active: bool,
     pub created_at: String,
     pub updated_at: String,
+    pub post_process_action: String,
+    pub move_to_folder: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
@@ -80,6 +114,8 @@ pub struct NewEmailRule {
     pub is_active: bool,
     pub created_at: String,
     pub updated_at: String,
+    pub post_process_action: String,
+    pub move_to_folder: Option<String>,
 }
 
 impl NewEmailRule {
@@ -106,6 +142,8 @@ impl NewEmailRule {
             is_active,
             created_at: now.to_rfc3339(),
             updated_at: now.to_rfc3339(),
+            post_process_action: "mark_read".to_string(),
+            move_to_folder: None,
         }
     }
 }
@@ -113,7 +151,7 @@ impl NewEmailRule {
 #[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
 #[diesel(table_name = feeds)]
 pub struct Feed {
-    pub id: String,
+    pub id: Option<String>,
     pub title: String,
     pub description: Option<String>,
     pub link: Option<String>,
@@ -122,6 +160,9 @@ pub struct Feed {
     pub is_active: bool,
     pub created_at: String,
     pub updated_at: String,
+    pub max_items: Option<i32>,
+    pub max_age_days: Option<i32>,
+    pub min_items: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
@@ -136,6 +177,9 @@ pub struct NewFeed {
     pub is_active: bool,
     pub created_at: String,
     pub updated_at: String,
+    pub max_items: Option<i32>,
+    pub max_age_days: Option<i32>,
+    pub min_items: Option<i32>,
 }
 
 impl NewFeed {
@@ -158,6 +202,9 @@ impl NewFeed {
             is_active,
             created_at: now.to_rfc3339(),
             updated_at: now.to_rfc3339(),
+            max_items: Some(100),       // Default: keep last 100 items
+            max_age_days: Some(30),     // Default: keep items for 30 days
+            min_items: Some(10),        // Default: always keep at least 10 items
         }
     }
 }
@@ -165,7 +212,7 @@ impl NewFeed {
 #[derive(Debug, Clone, Serialize, Deserialize, Queryable, Selectable)]
 #[diesel(table_name = feed_items)]
 pub struct FeedItem {
-    pub id: String,
+    pub id: Option<String>,
     pub feed_id: String,
     pub title: String,
     pub description: Option<String>,
@@ -177,6 +224,9 @@ pub struct FeedItem {
     pub email_from: Option<String>,
     pub email_body: Option<String>,
     pub created_at: String,
+    pub is_read: Option<bool>,
+    pub starred: Option<bool>,
+    pub body_size: Option<i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Insertable)]
@@ -194,6 +244,9 @@ pub struct NewFeedItem {
     pub email_from: Option<String>,
     pub email_body: Option<String>,
     pub created_at: String,
+    pub is_read: Option<bool>,
+    pub starred: Option<bool>,
+    pub body_size: Option<i32>,
 }
 
 impl NewFeedItem {
@@ -209,6 +262,7 @@ impl NewFeedItem {
         email_from: Option<String>,
         email_body: Option<String>,
     ) -> Self {
+        let body_size = email_body.as_ref().map(|body| body.len() as i32).unwrap_or(0);
         Self {
             id: Uuid::new_v4().to_string(),
             feed_id,
@@ -222,6 +276,9 @@ impl NewFeedItem {
             email_from,
             email_body,
             created_at: Utc::now().to_rfc3339(),
+            is_read: Some(false),           // New items start unread
+            starred: Some(false),           // New items start unstarred
+            body_size: Some(body_size),     // Calculate body size
         }
     }
 }

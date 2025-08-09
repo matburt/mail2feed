@@ -4,6 +4,7 @@
 //! continuously in the background, monitoring IMAP accounts and generating
 //! RSS/Atom feeds from new emails.
 
+pub mod cleanup;
 pub mod config;
 pub mod control;
 pub mod scheduler;

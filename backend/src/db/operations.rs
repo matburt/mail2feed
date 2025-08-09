@@ -17,7 +17,7 @@ impl ImapAccountOps {
 
     pub fn get_by_id(conn: &mut SqliteConnection, account_id: &str) -> Result<ImapAccount> {
         imap_accounts::table
-            .find(account_id)
+            .filter(imap_accounts::id.eq(account_id))
             .first(conn)
             .map_err(|e| anyhow::anyhow!("Failed to find IMAP account {}: {}", account_id, e))
     }
@@ -29,7 +29,7 @@ impl ImapAccountOps {
     }
 
     pub fn update(conn: &mut SqliteConnection, account_id: &str, updated_account: &NewImapAccount) -> Result<ImapAccount> {
-        diesel::update(imap_accounts::table.find(account_id))
+        diesel::update(imap_accounts::table.filter(imap_accounts::id.eq(account_id)))
             .set((
                 imap_accounts::name.eq(&updated_account.name),
                 imap_accounts::host.eq(&updated_account.host),
@@ -46,7 +46,7 @@ impl ImapAccountOps {
     }
 
     pub fn delete(conn: &mut SqliteConnection, account_id: &str) -> Result<()> {
-        diesel::delete(imap_accounts::table.find(account_id))
+        diesel::delete(imap_accounts::table.filter(imap_accounts::id.eq(account_id)))
             .execute(conn)
             .map_err(|e| anyhow::anyhow!("Failed to delete IMAP account {}: {}", account_id, e))?;
         Ok(())
@@ -67,7 +67,7 @@ impl EmailRuleOps {
 
     pub fn get_by_id(conn: &mut SqliteConnection, rule_id: &str) -> Result<EmailRule> {
         email_rules::table
-            .find(rule_id)
+            .filter(email_rules::id.eq(rule_id))
             .first(conn)
             .map_err(|e| anyhow::anyhow!("Failed to find email rule {}: {}", rule_id, e))
     }
@@ -94,7 +94,7 @@ impl EmailRuleOps {
     }
 
     pub fn update(conn: &mut SqliteConnection, rule_id: &str, updated_rule: &NewEmailRule) -> Result<EmailRule> {
-        diesel::update(email_rules::table.find(rule_id))
+        diesel::update(email_rules::table.filter(email_rules::id.eq(rule_id)))
             .set((
                 email_rules::name.eq(&updated_rule.name),
                 email_rules::imap_account_id.eq(&updated_rule.imap_account_id),
@@ -113,7 +113,7 @@ impl EmailRuleOps {
     }
 
     pub fn delete(conn: &mut SqliteConnection, rule_id: &str) -> Result<()> {
-        diesel::delete(email_rules::table.find(rule_id))
+        diesel::delete(email_rules::table.filter(email_rules::id.eq(rule_id)))
             .execute(conn)
             .map_err(|e| anyhow::anyhow!("Failed to delete email rule {}: {}", rule_id, e))?;
         Ok(())
@@ -134,7 +134,7 @@ impl FeedOps {
 
     pub fn get_by_id(conn: &mut SqliteConnection, feed_id: &str) -> Result<Feed> {
         feeds::table
-            .find(feed_id)
+            .filter(feeds::id.eq(feed_id))
             .first(conn)
             .map_err(|e| anyhow::anyhow!("Failed to find feed {}: {}", feed_id, e))
     }
@@ -161,7 +161,7 @@ impl FeedOps {
     }
 
     pub fn update(conn: &mut SqliteConnection, feed_id: &str, updated_feed: &NewFeed) -> Result<Feed> {
-        diesel::update(feeds::table.find(feed_id))
+        diesel::update(feeds::table.filter(feeds::id.eq(feed_id)))
             .set((
                 feeds::title.eq(&updated_feed.title),
                 feeds::description.eq(&updated_feed.description),
@@ -178,7 +178,7 @@ impl FeedOps {
     }
 
     pub fn delete(conn: &mut SqliteConnection, feed_id: &str) -> Result<()> {
-        diesel::delete(feeds::table.find(feed_id))
+        diesel::delete(feeds::table.filter(feeds::id.eq(feed_id)))
             .execute(conn)
             .map_err(|e| anyhow::anyhow!("Failed to delete feed {}: {}", feed_id, e))?;
         Ok(())
@@ -189,17 +189,31 @@ pub struct FeedItemOps;
 
 impl FeedItemOps {
     pub fn create(conn: &mut SqliteConnection, new_item: &NewFeedItem) -> Result<FeedItem> {
-        diesel::insert_into(feed_items::table)
-            .values(new_item)
-            .execute(conn)
-            .map_err(|e| anyhow::anyhow!("Failed to create feed item: {}", e))?;
+        tracing::info!("📝 Creating feed item: id={}, title={}, feed_id={}", new_item.id, new_item.title, new_item.feed_id);
+        tracing::debug!("Feed item details: pub_date={}, author={:?}, body_size={:?}", 
+                       new_item.pub_date, new_item.author, new_item.body_size);
         
-        Self::get_by_id(conn, &new_item.id)
+        let insert_result = diesel::insert_into(feed_items::table)
+            .values(new_item)
+            .execute(conn);
+            
+        match insert_result {
+            Ok(rows_affected) => {
+                tracing::info!("✅ Database insert successful: {} rows affected for item '{}'", rows_affected, new_item.title);
+                let retrieved_item = Self::get_by_id(conn, &new_item.id)?;
+                tracing::info!("✅ Successfully retrieved created item with ID: {}", retrieved_item.id.as_ref().unwrap_or(&"None".to_string()));
+                Ok(retrieved_item)
+            }
+            Err(e) => {
+                tracing::error!("❌ Database insert failed for '{}': {}", new_item.title, e);
+                Err(anyhow::anyhow!("Failed to create feed item '{}': {}", new_item.title, e))
+            }
+        }
     }
 
     pub fn get_by_id(conn: &mut SqliteConnection, item_id: &str) -> Result<FeedItem> {
         feed_items::table
-            .find(item_id)
+            .filter(feed_items::id.eq(item_id))
             .first(conn)
             .map_err(|e| anyhow::anyhow!("Failed to find feed item {}: {}", item_id, e))
     }
@@ -238,7 +252,7 @@ impl FeedItemOps {
 
     #[allow(dead_code)]
     pub fn delete(conn: &mut SqliteConnection, item_id: &str) -> Result<()> {
-        diesel::delete(feed_items::table.find(item_id))
+        diesel::delete(feed_items::table.filter(feed_items::id.eq(item_id)))
             .execute(conn)
             .map_err(|e| anyhow::anyhow!("Failed to delete feed item {}: {}", item_id, e))?;
         Ok(())
@@ -271,8 +285,39 @@ pub fn create_feed_item(
     pool: &Pool<ConnectionManager<SqliteConnection>>,
     new_item: NewFeedItem,
 ) -> Result<String> {
+    tracing::debug!("📡 Getting database connection from pool for item: '{}'", new_item.title);
     let mut conn = pool.get()
         .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+    tracing::debug!("✅ Got database connection from pool");
+    
     let item = FeedItemOps::create(&mut conn, &new_item)?;
-    Ok(item.id)
+    let item_id = item.id.ok_or_else(|| anyhow::anyhow!("Created item has no ID"))?;
+    tracing::info!("🎉 Pool-based feed item creation complete: ID={}", item_id);
+    Ok(item_id)
+}
+
+pub fn get_all_feeds(
+    pool: &Pool<ConnectionManager<SqliteConnection>>,
+) -> Result<Vec<Feed>> {
+    let mut conn = pool.get()
+        .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+    FeedOps::get_all(&mut conn)
+}
+
+pub fn get_feed_items_by_feed(
+    pool: &Pool<ConnectionManager<SqliteConnection>>,
+    feed_id: &str,
+) -> Result<Vec<FeedItem>> {
+    let mut conn = pool.get()
+        .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+    FeedItemOps::get_by_feed_id(&mut conn, feed_id, None)
+}
+
+pub fn delete_feed_item(
+    pool: &Pool<ConnectionManager<SqliteConnection>>,
+    item_id: &str,
+) -> Result<()> {
+    let mut conn = pool.get()
+        .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
+    FeedItemOps::delete(&mut conn, item_id)
 }

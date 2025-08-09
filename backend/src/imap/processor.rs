@@ -1,12 +1,10 @@
 use anyhow::{Result, Context};
-use crate::db::models::{EmailRule, ImapAccount, NewFeedItem};
+use crate::db::models::{EmailRule, ImapAccount, NewFeedItem, EmailAction};
 use crate::db::operations;
 use super::client::{ImapClient, Email};
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel::SqliteConnection;
 use tracing::{info, warn, error, debug};
-use chrono::Utc;
-use uuid::Uuid;
 
 pub struct EmailProcessor {
     account: ImapAccount,
@@ -21,8 +19,12 @@ impl EmailProcessor {
     pub async fn process_account(&self) -> Result<ProcessingResult> {
         info!("Processing IMAP account: {}", self.account.name);
         
+        // Get account ID or return early if None
+        let account_id = self.account.id.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Account has no ID"))?;
+        
         // Get email rules for this account
-        let rules = operations::get_email_rules_by_account(&self.pool, &self.account.id)?;
+        let rules = operations::get_email_rules_by_account(&self.pool, account_id)?;
         
         if rules.is_empty() {
             info!("No active rules for account: {}", self.account.name);
@@ -61,7 +63,9 @@ impl EmailProcessor {
         info!("Processing rule: {} for folder: {}", rule.name, rule.folder);
         
         // Get the feed associated with this rule
-        let feeds = operations::get_feeds_by_rule(&self.pool, &rule.id)?;
+        let rule_id = rule.id.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Rule has no ID"))?;
+        let feeds = operations::get_feeds_by_rule(&self.pool, rule_id)?;
         if feeds.is_empty() {
             warn!("No feed configured for rule: {}", rule.name);
             return Ok(RuleProcessingResult {
@@ -71,6 +75,8 @@ impl EmailProcessor {
         }
         
         let feed = &feeds[0]; // Use the first feed
+        let feed_id = feed.id.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Feed has no ID"))?;
         
         // Fetch emails from the specified folder
         let emails = client.fetch_emails_from_folder(&rule.folder, Some(100))
@@ -84,32 +90,56 @@ impl EmailProcessor {
         
         info!("Processing {} emails against rule criteria", emails.len());
         
-        for email in emails {
+        for (index, email) in emails.iter().enumerate() {
+            let email_number = index + 1;
+            info!("🔄 Processing email {}/{}: '{}'", email_number, emails.len(), email.subject);
             debug!("Checking email - UID: {}, Subject: '{}', From: '{}' against rule: {}", 
                    email.uid, email.subject, email.from, rule.name);
                    
             if self.matches_rule(&email, rule) {
                 result.emails_processed += 1;
-                info!("Email matches rule '{}': {}", rule.name, email.subject);
+                info!("✅ Email {} matches rule '{}': {}", email_number, rule.name, email.subject);
+                info!("Email details: from='{}', date='{}'", email.from, email.date.format("%Y-%m-%d %H:%M:%S"));
                 
                 // Check if we already have this email in the feed
-                if !self.email_exists_in_feed(&email, &feed.id)? {
+                debug!("Checking duplicate for email {}: '{}'", email_number, email.subject);
+                if !self.email_exists_in_feed(&email, feed_id)? {
                     // Create a new feed item
-                    match self.create_feed_item(&email, &feed.id) {
-                        Ok(_) => {
+                    info!("📝 Attempting to create feed item for email {}: '{}'", email_number, email.subject);
+                    match self.create_feed_item(&email, feed_id) {
+                        Ok(item_id) => {
                             result.items_created += 1;
-                            info!("Created feed item for email: {}", email.subject);
+                            info!("✅ Successfully created feed item {} with ID {}: '{}'", email_number, item_id, email.subject);
+                            
+                            // Post-process the email according to the rule
+                            if let Err(e) = self.post_process_email(client, &email, rule).await {
+                                warn!("⚠️ Failed to post-process email {}: '{}' - {}", email_number, email.subject, e);
+                            } else {
+                                info!("✅ Post-processed email {} successfully", email_number);
+                            }
                         }
                         Err(e) => {
-                            error!("Failed to create feed item: {}", e);
+                            error!("❌ Failed to create feed item for email {}: '{}' - Error: {}", email_number, email.subject, e);
                         }
                     }
                 } else {
-                    info!("Email already exists in feed: {}", email.subject);
+                    info!("⏭️ Email {} already exists in feed: {}", email_number, email.subject);
                 }
             } else {
-                debug!("Email does not match rule criteria");
+                debug!("❌ Email {} does not match rule criteria: '{}'", email_number, email.subject);
             }
+        }
+        
+        info!("📊 Rule processing complete: processed {} emails, created {} feed items", 
+              result.emails_processed, result.items_created);
+        
+        if result.emails_processed > 0 && result.items_created == 0 {
+            error!("🚨 CRITICAL: {} emails were processed but NO feed items were created!", result.emails_processed);
+        } else if result.items_created < result.emails_processed {
+            warn!("⚠️ Mismatch: {} emails processed but only {} feed items created", 
+                  result.emails_processed, result.items_created);
+        } else if result.items_created == result.emails_processed {
+            info!("✅ All processed emails successfully converted to feed items");
         }
         
         Ok(result)
@@ -163,30 +193,51 @@ impl EmailProcessor {
         use crate::db::schema::feed_items::dsl::*;
         use diesel::prelude::*;
         
+        // Priority 1: Use message ID if available and not empty
+        if !email.message_id.is_empty() {
+            debug!("Checking duplicate by message ID: '{}'", email.message_id);
+            let count = feed_items
+                .filter(feed_id.eq(feed_id_val))
+                .filter(email_message_id.eq(&email.message_id))
+                .count()
+                .get_result::<i64>(conn)?;
+            
+            if count > 0 {
+                debug!("Found duplicate by message ID '{}': {} existing items", email.message_id, count);
+                return Ok(true);
+            }
+        }
+        
+        // Priority 2: Fall back to subject + from + date combination for more robust duplicate detection
+        debug!("Checking duplicate by subject+from combination: '{}' from '{}'", email.subject, email.from);
+        let email_date_str = email.date.to_rfc3339();
+        debug!("Comparing with email date: {}", email_date_str);
         let count = feed_items
             .filter(feed_id.eq(feed_id_val))
-            .filter(email_message_id.eq(&email.message_id))
+            .filter(title.eq(&email.subject))
+            .filter(email_from.eq(&email.from))
+            .filter(pub_date.eq(email_date_str))
             .count()
             .get_result::<i64>(conn)?;
             
+        debug!("Duplicate check for '{}' from '{}': found {} existing items", 
+               email.subject, email.from, count);
         Ok(count > 0)
     }
     
     fn create_feed_item(&self, email: &Email, feed_id_val: &str) -> Result<String> {
-        let new_item = NewFeedItem {
-            id: Uuid::new_v4().to_string(),
-            feed_id: feed_id_val.to_string(),
-            title: email.subject.clone(),
-            description: Some(self.truncate_body(&email.body, 500)),
-            link: Some(format!("mailto:{}?subject={}", email.from, urlencoding::encode(&email.subject))),
-            author: Some(email.from.clone()),
-            pub_date: email.date.to_rfc3339(),
-            email_message_id: Some(email.message_id.clone()),
-            email_subject: Some(email.subject.clone()),
-            email_from: Some(email.from.clone()),
-            email_body: Some(email.body.clone()),
-            created_at: Utc::now().to_rfc3339(),
-        };
+        let new_item = NewFeedItem::new(
+            feed_id_val.to_string(),
+            email.subject.clone(),
+            Some(self.truncate_body(&email.body, 500)),
+            Some(format!("mailto:{}?subject={}", email.from, urlencoding::encode(&email.subject))),
+            Some(email.from.clone()),
+            email.date,
+            Some(email.message_id.clone()),
+            Some(email.subject.clone()),
+            Some(email.from.clone()),
+            Some(email.body.clone()),
+        );
         
         operations::create_feed_item(&self.pool, new_item)
     }
@@ -196,6 +247,46 @@ impl EmailProcessor {
             body.to_string()
         } else {
             format!("{}...", &body[..max_length])
+        }
+    }
+    
+    /// Post-process an email according to the rule's action configuration
+    async fn post_process_email(&self, client: &ImapClient, email: &Email, rule: &EmailRule) -> Result<()> {
+        let action = EmailAction::from_str(&rule.post_process_action);
+        
+        info!("Post-processing email '{}' with action: {:?}", email.subject, action);
+        
+        match action {
+            EmailAction::DoNothing => {
+                debug!("No post-processing action for email: {}", email.subject);
+                Ok(())
+            }
+            EmailAction::MarkAsRead => {
+                client.mark_as_read(email.uid)
+                    .await
+                    .with_context(|| format!("Failed to mark email {} as read", email.uid))?;
+                info!("Marked email '{}' as read", email.subject);
+                Ok(())
+            }
+            EmailAction::Delete => {
+                client.delete_email(email.uid)
+                    .await
+                    .with_context(|| format!("Failed to delete email {}", email.uid))?;
+                info!("Deleted email '{}'", email.subject);
+                Ok(())
+            }
+            EmailAction::MoveToFolder => {
+                if let Some(target_folder) = &rule.move_to_folder {
+                    client.move_to_folder(email.uid, target_folder)
+                        .await
+                        .with_context(|| format!("Failed to move email {} to folder {}", email.uid, target_folder))?;
+                    info!("Moved email '{}' to folder '{}'", email.subject, target_folder);
+                    Ok(())
+                } else {
+                    warn!("Move action configured but no target folder specified for rule '{}'", rule.name);
+                    Ok(())
+                }
+            }
         }
     }
 }

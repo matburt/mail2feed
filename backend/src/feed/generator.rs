@@ -26,8 +26,10 @@ impl FeedGenerator {
             rss_item.set_pub_date(Some(item.pub_date.clone()));
             
             // Create a unique GUID for the item
+            let feed_id = feed.id.as_ref().map_or("unknown", |v| v);
+            let item_id = item.id.as_ref().map_or("unknown", |v| v);
             let guid = Guid {
-                value: format!("{}_{}", feed.id, item.id),
+                value: format!("{}_{}", feed_id, item_id),
                 permalink: false,
             };
             rss_item.set_guid(Some(guid));
@@ -44,7 +46,8 @@ impl FeedGenerator {
         let mut atom_feed = AtomFeed::default();
         
         atom_feed.set_title(feed.title.clone());
-        atom_feed.set_id(format!("urn:uuid:{}", feed.id));
+        let feed_id = feed.id.as_ref().map_or("unknown", |v| v);
+        atom_feed.set_id(format!("urn:uuid:{}", feed_id));
         atom_feed.set_updated(Utc::now());
         
         if let Some(description) = &feed.description {
@@ -56,7 +59,8 @@ impl FeedGenerator {
         for item in items {
             let mut entry = Entry::default();
             
-            entry.set_id(format!("urn:uuid:{}", item.id));
+            let item_id = item.id.as_ref().map_or("unknown", |v| v);
+            entry.set_id(format!("urn:uuid:{}", item_id));
             entry.set_title(item.title.clone());
             
             // Parse the pub_date string to DateTime<Utc>
@@ -109,8 +113,9 @@ impl FeedGenerator {
         message_id: Option<String>,
         date: DateTime<Utc>,
     ) -> FeedItem {
+        let body_size = body.len() as i32;
         FeedItem {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: Some(uuid::Uuid::new_v4().to_string()),
             feed_id,
             title: subject.to_string(),
             description: Some(Self::format_email_content(from, body)),
@@ -122,6 +127,9 @@ impl FeedGenerator {
             email_from: Some(from.to_string()),
             email_body: Some(body.to_string()),
             created_at: Utc::now().to_rfc3339(),
+            is_read: Some(false),
+            starred: Some(false),
+            body_size: Some(body_size),
         }
     }
     

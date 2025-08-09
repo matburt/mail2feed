@@ -69,7 +69,7 @@ fn test_email_parsing_with_unicode_content() {
 fn test_protonmail_bridge_account_config() {
     // Typical ProtonMail Bridge configuration
     let account = ImapAccount {
-        id: Uuid::new_v4().to_string(),
+        id: Some(Uuid::new_v4().to_string()),
         name: "ProtonMail Bridge".to_string(),
         host: "localhost".to_string(),
         port: 1143,
@@ -90,7 +90,7 @@ fn test_protonmail_bridge_account_config() {
 fn test_gmail_bridge_account_config() {
     // Gmail IMAP configuration for comparison
     let account = ImapAccount {
-        id: Uuid::new_v4().to_string(),
+        id: Some(Uuid::new_v4().to_string()),
         name: "Gmail".to_string(),
         host: "imap.gmail.com".to_string(),
         port: 993,
@@ -112,7 +112,7 @@ fn test_gmail_bridge_account_config() {
 fn test_imap_client_creation() {
     // Test IMAP client can be created with ProtonMail Bridge account
     let account = ImapAccount {
-        id: Uuid::new_v4().to_string(),
+        id: Some(Uuid::new_v4().to_string()),
         name: "Test Account".to_string(),
         host: "localhost".to_string(),
         port: 1143,
@@ -406,7 +406,7 @@ mod protonmail_bridge_tests {
     fn test_protonmail_bridge_account_characteristics() {
         // Test typical ProtonMail Bridge account setup
         let account = ImapAccount {
-            id: Uuid::new_v4().to_string(),
+            id: Some(Uuid::new_v4().to_string()),
             name: "ProtonMail Bridge".to_string(),
             host: "localhost".to_string(), // Bridge runs locally
             port: 1143,                     // Non-standard port

@@ -2,7 +2,7 @@
 
 diesel::table! {
     email_rules (id) {
-        id -> Text,
+        id -> Nullable<Text>,
         name -> Text,
         imap_account_id -> Text,
         folder -> Text,
@@ -13,12 +13,14 @@ diesel::table! {
         is_active -> Bool,
         created_at -> Text,
         updated_at -> Text,
+        post_process_action -> Text,
+        move_to_folder -> Nullable<Text>,
     }
 }
 
 diesel::table! {
     feed_items (id) {
-        id -> Text,
+        id -> Nullable<Text>,
         feed_id -> Text,
         title -> Text,
         description -> Nullable<Text>,
@@ -30,12 +32,15 @@ diesel::table! {
         email_from -> Nullable<Text>,
         email_body -> Nullable<Text>,
         created_at -> Text,
+        is_read -> Nullable<Bool>,
+        starred -> Nullable<Bool>,
+        body_size -> Nullable<Integer>,
     }
 }
 
 diesel::table! {
     feeds (id) {
-        id -> Text,
+        id -> Nullable<Text>,
         title -> Text,
         description -> Nullable<Text>,
         link -> Nullable<Text>,
@@ -44,12 +49,15 @@ diesel::table! {
         is_active -> Bool,
         created_at -> Text,
         updated_at -> Text,
+        max_items -> Nullable<Integer>,
+        max_age_days -> Nullable<Integer>,
+        min_items -> Nullable<Integer>,
     }
 }
 
 diesel::table! {
     imap_accounts (id) {
-        id -> Text,
+        id -> Nullable<Text>,
         name -> Text,
         host -> Text,
         port -> Integer,

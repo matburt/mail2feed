@@ -2,7 +2,7 @@
 //! 
 //! Manages the scheduling and execution of background email processing tasks
 
-use crate::background::config::BackgroundConfig;
+use crate::background::{config::BackgroundConfig, cleanup::FeedCleanupService};
 use crate::db::{models::ImapAccount, operations, DbPool};
 use crate::imap::processor::EmailProcessor;
 use std::collections::HashMap;
@@ -231,12 +231,18 @@ impl EmailScheduler {
     /// Main scheduler loop
     async fn run_scheduler_loop(&self) {
         let mut ticker = interval(self.config.global_interval());
+        let mut cleanup_ticker = interval(std::time::Duration::from_secs(24 * 60 * 60)); // Run cleanup daily
         
         loop {
             tokio::select! {
                 _ = ticker.tick() => {
                     if let Err(e) = self.process_due_accounts().await {
                         error!("Error during scheduled processing: {}", e);
+                    }
+                }
+                _ = cleanup_ticker.tick() => {
+                    if let Err(e) = self.run_cleanup().await {
+                        error!("Error during feed cleanup: {}", e);
                     }
                 }
                 _ = self.cancellation_token.cancelled() => {
@@ -256,12 +262,16 @@ impl EmailScheduler {
         let mut tasks = Vec::new();
         
         for account in accounts {
-            let account_id = account.id.clone();
+            // Skip accounts with no ID
+            let Some(account_id) = &account.id else {
+                warn!("Skipping account with no ID: {}", account.name);
+                continue;
+            };
             
             // Check if account is due for processing
             let should_process = {
                 let states = self.account_states.read().await;
-                if let Some(state) = states.get(&account_id) {
+                if let Some(state) = states.get(account_id) {
                     !state.is_processing && now >= state.next_allowed_run
                 } else {
                     true // New account, should process
@@ -272,7 +282,7 @@ impl EmailScheduler {
                 // Check if we can acquire a processing slot
                 if self.processing_semaphore.available_permits() > 0 {
                     // Mark as processing
-                    self.mark_account_processing(&account_id, true).await;
+                    self.mark_account_processing(account_id, true).await;
                     
                     // Spawn processing task with proper ownership
                     let pool = self.pool.clone();
@@ -371,14 +381,16 @@ impl EmailScheduler {
         let now = Instant::now();
         
         for account in accounts {
-            if !states.contains_key(&account.id) {
-                states.insert(account.id.clone(), AccountState {
-                    account_id: account.id,
-                    stats: ProcessingStats::default(),
-                    is_processing: false,
-                    next_allowed_run: now,
-                    retry_count: 0,
-                });
+            if let Some(account_id) = &account.id {
+                if !states.contains_key(account_id) {
+                    states.insert(account_id.clone(), AccountState {
+                        account_id: account_id.clone(),
+                        stats: ProcessingStats::default(),
+                        is_processing: false,
+                        next_allowed_run: now,
+                        retry_count: 0,
+                    });
+                }
             }
         }
         
@@ -422,5 +434,22 @@ impl EmailScheduler {
             is_running: self.is_running.clone(),
             processing_semaphore: self.processing_semaphore.clone(),
         }
+    }
+    
+    /// Run feed cleanup for retention policy enforcement
+    async fn run_cleanup(&self) -> anyhow::Result<()> {
+        debug!("Starting scheduled feed cleanup...");
+        
+        let cleanup_service = FeedCleanupService::new(self.pool.clone());
+        let result = cleanup_service.cleanup_all_feeds().await?;
+        
+        if result.items_removed > 0 {
+            info!("Feed cleanup completed: {} feeds processed, {} items removed, {} errors", 
+                  result.feeds_processed, result.items_removed, result.errors);
+        } else {
+            debug!("Feed cleanup completed: no items removed");
+        }
+        
+        Ok(())
     }
 }

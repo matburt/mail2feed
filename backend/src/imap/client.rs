@@ -591,6 +591,27 @@ impl ImapClient {
         warn!("Search functionality not yet implemented - returning empty results");
         Ok(vec![])
     }
+    
+    /// Mark an email as read by UID
+    pub async fn mark_as_read(&self, uid: u32) -> Result<()> {
+        info!("Marking email {} as read (placeholder implementation)", uid);
+        // TODO: Implement actual mark as read functionality
+        Ok(())
+    }
+    
+    /// Delete an email by UID
+    pub async fn delete_email(&self, uid: u32) -> Result<()> {
+        info!("Deleting email {} (placeholder implementation)", uid);
+        // TODO: Implement actual email deletion functionality
+        Ok(())
+    }
+    
+    /// Move an email to another folder by UID
+    pub async fn move_to_folder(&self, uid: u32, target_folder: &str) -> Result<()> {
+        info!("Moving email {} to folder '{}' (placeholder implementation)", uid, target_folder);
+        // TODO: Implement actual email move functionality
+        Ok(())
+    }
 }
 
 /// Decode MIME-encoded headers (like =?utf-8?q?..?=)
@@ -645,6 +666,7 @@ fn parse_email(fetch: &imap::types::Fetch) -> Result<Email> {
                 message_id = line.strip_prefix("Message-ID: ")
                     .or_else(|| line.strip_prefix("Message-Id: "))
                     .unwrap_or("").to_string();
+                debug!("Found Message-ID: {}", message_id);
             }
         }
     } else if let Some(envelope) = fetch.envelope() {
@@ -744,6 +766,8 @@ fn parse_email(fetch: &imap::types::Fetch) -> Result<Email> {
     
     debug!("Parsed email - UID: {}, Subject: '{}', From: '{}', To: '{}', MessageID: '{}'", 
            uid, subject, from, to, message_id);
+    
+    debug!("Parsed email: uid={}, message_id='{}', subject='{}'", uid, message_id, subject);
     
     Ok(Email {
         uid,
