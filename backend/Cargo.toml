@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 default-run = "mail2feed-backend"
 
+[features]
+default = []
+postgres = []
+
 [dependencies]
 # Web framework
 axum = "0.6.20"
@@ -13,7 +17,7 @@ tower = "0.4"
 tower-http = { version = "0.4", features = ["cors"] }
 
 # Database - using diesel for multi-database support
-diesel = { version = "2.1", features = ["sqlite", "chrono", "uuid", "r2d2"] }
+diesel = { version = "2.1", features = ["sqlite", "postgres", "chrono", "uuid", "r2d2"] }
 diesel_migrations = "2.1"
 dotenvy = "0.15"
 
@@ -40,11 +44,15 @@ tracing-subscriber = "0.3"
 urlencoding = "2.1"
 
 # For async diesel operations
-deadpool-diesel = { version = "0.5", features = ["sqlite"] }
+deadpool-diesel = { version = "0.5", features = ["sqlite", "postgres"] }
 
 [[bin]]
 name = "process_emails"
 path = "src/bin/process_emails.rs"
+
+[[bin]]
+name = "test_postgres"
+path = "src/bin/test_postgres.rs"
 
 [dev-dependencies]
 tokio-test = "0.4"

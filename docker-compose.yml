@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: mail2feed
+      POSTGRES_USER: mail2feed_user
+      POSTGRES_PASSWORD: mail2feed_pass
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations_postgres:/docker-entrypoint-initdb.d/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mail2feed_user -d mail2feed"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - mail2feed-network
+
+  # pgAdmin for PostgreSQL management (optional)
+  pgadmin:
+    image: dpage/pgadmin4:7
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@mail2feed.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    ports:
+      - "8080:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - mail2feed-network
+    profiles:
+      - pgadmin
+
+  # Mail2Feed Backend (for testing PostgreSQL integration)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    environment:
+      DATABASE_URL: postgresql://mail2feed_user:mail2feed_pass@postgres:5432/mail2feed
+      RUST_LOG: debug
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - mail2feed-network
+    profiles:
+      - backend
+
+  # Mail2Feed Frontend (optional)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      VITE_API_URL: http://localhost:8000
+    ports:
+      - "3002:3000"
+    depends_on:
+      - backend
+    networks:
+      - mail2feed-network
+    profiles:
+      - frontend
+
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+networks:
+  mail2feed-network:
+    driver: bridge

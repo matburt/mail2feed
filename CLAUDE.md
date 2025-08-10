@@ -11,13 +11,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Supports filtering by tags or labels
 - Converts each mailing list into its own feed
 - Web GUI for managing email rules and feeds
-- SQLite database (with future PostgreSQL support planned)
+- Dual database support: SQLite and PostgreSQL
 
 ## Architecture
 
 ### Backend (Rust)
 - **Framework**: Axum web server with async support
-- **Database**: SQLite via Diesel ORM with r2d2 connection pooling
+- **Database**: SQLite/PostgreSQL via Diesel ORM with r2d2 connection pooling and database abstraction layer
 - **IMAP**: imap crate for email access (Phase 2)
 - **Feed Generation**: rss and atom_syndication crates (Phase 3)
 - **Key Components**:
@@ -37,16 +37,39 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Testing**: Jest and React Testing Library (85-90% coverage)
 - **API Client**: Type-safe client for backend communication
 
-### Database Schema (Implemented)
+### Database Architecture (Implemented)
+
+#### Dual Database Support
+- **SQLite**: Default embedded database for local development and single-user deployments
+- **PostgreSQL**: Full-featured database for production and multi-user environments
+- **Database Abstraction Layer**: Unified operations interface supporting both databases
+- **Connection Management**: Database type detection and appropriate pool creation
+- **Migration System**: Separate migration sets for SQLite and PostgreSQL
+
+#### Schema (Both Databases)
 - **imap_accounts**: IMAP server configurations with credentials
 - **email_rules**: Email filtering rules (linked to IMAP accounts)
 - **feeds**: Generated feed configurations (linked to email rules)
 - **feed_items**: Individual feed entries from emails (linked to feeds)
 - **Relationships**: Full cascade delete support with foreign key constraints
 
+#### Database Files Structure
+```
+backend/
+├── migrations/           # SQLite migrations (Diesel default)
+├── migrations_postgres/  # PostgreSQL-specific migrations
+├── src/db/
+│   ├── connection.rs     # Database abstraction layer
+│   ├── operations.rs     # SQLite-specific operations
+│   ├── operations_pg.rs  # PostgreSQL-specific operations
+│   └── operations_generic.rs # Unified database operations
+```
+
 ## Development Commands
 
 ### Quick Start Scripts
+
+#### SQLite (Default)
 ```bash
 ./scripts/setup.sh   # Complete development environment setup
 ./scripts/dev.sh     # Start development server with hot reloading
@@ -54,14 +77,32 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ./scripts/clean.sh   # Clean build artifacts and temporary files
 ```
 
+#### PostgreSQL
+```bash
+./scripts/setup_postgres.sh  # Set up PostgreSQL with Docker
+./scripts/dev_postgres.sh    # Start development server with PostgreSQL
+./scripts/test_postgres.sh   # Run PostgreSQL integration tests
+```
+
 ### Backend (Rust)
+
+#### SQLite (Default)
 ```bash
 cd backend
 cargo build          # Build the project
-cargo run           # Run the development server
+cargo run           # Run the development server  
 cargo test          # Run tests
 cargo clippy        # Run linter
 cargo fmt           # Format code
+```
+
+#### PostgreSQL
+```bash
+cd backend
+cargo build --features postgres    # Build with PostgreSQL support
+cargo run --features postgres      # Run with PostgreSQL
+cargo test --features postgres     # Run tests with PostgreSQL
+cargo run --bin test_postgres --features postgres  # Test PostgreSQL integration
 ```
 
 ### Frontend (TypeScript)
@@ -73,6 +114,41 @@ npm run build       # Build for production
 npm run lint        # Run ESLint
 npm run test        # Run tests with coverage
 npm run type-check  # Run TypeScript type checking
+```
+
+## Environment Configuration
+
+### SQLite (Default)
+```bash
+DATABASE_URL=sqlite:./data/mail2feed.db  # SQLite database file
+```
+
+### PostgreSQL
+```bash
+DATABASE_URL=postgresql://mail2feed_user:mail2feed_pass@localhost:5432/mail2feed
+```
+
+### Docker Compose (PostgreSQL Development)
+```bash
+# Start PostgreSQL only
+docker-compose up -d postgres
+
+# Start PostgreSQL with pgAdmin
+docker-compose --profile pgadmin up -d
+
+# Start full stack (backend + frontend)
+docker-compose --profile backend --profile frontend up -d
+
+# PostgreSQL connection details:
+# Host: localhost:5432
+# Database: mail2feed
+# Username: mail2feed_user  
+# Password: mail2feed_pass
+
+# pgAdmin access:
+# URL: http://localhost:8080
+# Email: admin@mail2feed.local
+# Password: admin123
 ```
 
 ## Project Structure
@@ -107,11 +183,16 @@ mail2feed/
 │   │   └── context/        # State management
 │   └── package.json        # Frontend dependencies
 ├── scripts/                # ✅ Development and deployment scripts
-│   ├── setup.sh           # Complete development environment setup
-│   ├── dev.sh             # Start development server
-│   ├── test.sh            # Run all tests
-│   └── clean.sh           # Clean build artifacts
-├── data/                   # ✅ Database files (created by setup)
+│   ├── setup.sh           # Complete development environment setup (SQLite)
+│   ├── dev.sh             # Start development server (SQLite)
+│   ├── test.sh            # Run all tests (SQLite)
+│   ├── clean.sh           # Clean build artifacts
+│   ├── setup_postgres.sh  # PostgreSQL environment setup
+│   ├── dev_postgres.sh    # Start development server (PostgreSQL)
+│   └── test_postgres.sh   # PostgreSQL integration tests
+├── k8s/                    # ✅ Kubernetes deployment configurations
+├── data/                   # ✅ SQLite database files (created by setup)
+├── docker-compose.yml      # ✅ PostgreSQL development environment
 ├── README.md               # ✅ Complete project documentation
 └── CLAUDE.md               # This file
 ```
