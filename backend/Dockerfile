@@ -51,11 +51,10 @@ RUN chown -R appuser:appuser /app/migrations
 USER appuser
 
 # Expose port
-EXPOSE 8000
+EXPOSE 3001
 
 # Set environment variables
 ENV RUST_LOG=info
-ENV DATABASE_URL=postgresql://mail2feed_user:mail2feed_pass@postgres:5432/mail2feed
 
 # Run the binary
 CMD ["./mail2feed-backend"]

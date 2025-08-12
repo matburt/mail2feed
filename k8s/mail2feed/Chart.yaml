@@ -1,0 +1,21 @@
+apiVersion: v2
+name: mail2feed
+description: A Helm chart for mail2feed - IMAP to RSS/Atom feed converter
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+home: https://github.com/matburt/mail2feed
+maintainers:
+  - name: mail2feed-team
+    url: https://github.com/matburt/mail2feed
+keywords:
+  - imap
+  - rss
+  - atom
+  - feed
+  - email
+dependencies:
+  - name: postgresql
+    version: "~12.12.10"
+    repository: https://charts.bitnami.com/bitnami
+    condition: postgresql.enabled

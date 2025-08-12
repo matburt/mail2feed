@@ -1,0 +1,58 @@
+# Production environment overrides
+backend:
+  image:
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  env:
+    RUST_LOG: info
+
+frontend:
+  image:
+    tag: "1.0.0"
+    pullPolicy: IfNotPresent
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+postgresql:
+  auth:
+    existingSecret: "mail2feed-postgres-secret"
+  primary:
+    persistence:
+      enabled: true
+      size: 20Gi
+      storageClass: "fast-ssd"
+  metrics:
+    enabled: true
+
+pgadmin:
+  enabled: false
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: mail2feed.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: mail2feed-tls
+      hosts:
+        - mail2feed.example.com

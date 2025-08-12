@@ -382,6 +382,39 @@ Both servers bind to `0.0.0.0` by default, making them accessible from:
 1. Set `VITE_API_URL` in `frontend/.env` to the full backend URL
 2. Or access the frontend from the same machine as the servers
 
+## 📦 Releases
+
+### Container Images
+
+```bash
+# Pull the latest images
+docker pull ghcr.io/matburt/mail2feed/backend:latest
+docker pull ghcr.io/matburt/mail2feed/frontend:latest
+```
+
+### Kubernetes Deployment
+
+```bash
+# Install via Helm from GitHub Container Registry
+helm install mail2feed oci://ghcr.io/matburt/mail2feed/helm/mail2feed
+
+# Install with external database
+helm install mail2feed oci://ghcr.io/matburt/mail2feed/helm/mail2feed \
+  --values k8s/mail2feed/values-external-db.yaml
+```
+
+### Creating Releases
+
+```bash
+# Create a new release (automated CI/CD)
+./scripts/release.sh 1.0.0
+
+# Build images locally
+./scripts/build-images.sh -t v1.0.0 --push
+```
+
+See [RELEASE.md](RELEASE.md) for detailed release management documentation.
+
 ## 🤝 Contributing
 
 1. Fork the repository

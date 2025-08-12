@@ -1,0 +1,57 @@
+{{- if .Values.pgadmin.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "mail2feed.fullname" . }}-pgadmin
+  labels:
+    {{- include "mail2feed.labels" . | nindent 4 }}
+    app.kubernetes.io/component: pgadmin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "mail2feed.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: pgadmin
+  template:
+    metadata:
+      labels:
+        {{- include "mail2feed.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: pgadmin
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "mail2feed.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: pgadmin
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.pgadmin.image.repository }}:{{ .Values.pgadmin.image.tag }}"
+          imagePullPolicy: {{ .Values.pgadmin.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          env:
+            - name: PGADMIN_DEFAULT_EMAIL
+              value: {{ .Values.pgadmin.env.PGADMIN_DEFAULT_EMAIL }}
+            - name: PGADMIN_DEFAULT_PASSWORD
+              value: {{ .Values.pgadmin.env.PGADMIN_DEFAULT_PASSWORD }}
+          resources:
+            {{- toYaml .Values.pgadmin.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

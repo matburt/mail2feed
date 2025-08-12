@@ -1,0 +1,32 @@
+# Development environment overrides
+backend:
+  image:
+    tag: "dev"
+    pullPolicy: Always
+  env:
+    RUST_LOG: debug
+  replicaCount: 1
+
+frontend:
+  image:
+    tag: "dev" 
+    pullPolicy: Always
+
+postgresql:
+  auth:
+    password: dev_password
+  primary:
+    persistence:
+      size: 2Gi
+
+pgadmin:
+  enabled: true
+
+ingress:
+  enabled: true
+  className: "nginx"
+  hosts:
+    - host: mail2feed-dev.local
+      paths:
+        - path: /
+          pathType: Prefix
