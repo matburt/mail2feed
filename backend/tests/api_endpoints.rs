@@ -471,8 +471,9 @@ async fn test_error_handling() {
 
 #[tokio::test]
 async fn test_feed_generation_with_items() {
-    // Ensure clean environment for this test
+    // Ensure clean environment for this test - set to explicit default
     std::env::remove_var("FEED_CACHE_DURATION");
+    std::env::set_var("FEED_CACHE_DURATION", "300");
     
     let app = app().await;
     
@@ -627,6 +628,9 @@ async fn test_feed_generation_with_items() {
         .unwrap();
     
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    
+    // Clean up environment variable
+    std::env::remove_var("FEED_CACHE_DURATION");
 }
 
 #[tokio::test]

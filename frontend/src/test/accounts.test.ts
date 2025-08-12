@@ -1,23 +1,21 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { accountsApi } from '../api/accounts'
-import { ApiClient } from '../api/client'
 import type { ImapAccount, CreateImapAccountRequest, UpdateImapAccountRequest } from '../types'
 
-// Mock the ApiClient
+// Mock the apiClient
+const mockClient = {
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  delete: vi.fn(),
+}
+
 vi.mock('../api/client', () => ({
-  ApiClient: vi.fn().mockImplementation(() => ({
-    get: vi.fn(),
-    post: vi.fn(),
-    put: vi.fn(),
-    delete: vi.fn(),
-  })),
+  apiClient: mockClient
 }))
 
 describe('accountsApi', () => {
-  let mockClient: any
-
   beforeEach(() => {
-    mockClient = new ApiClient()
     vi.clearAllMocks()
   })
 
@@ -25,24 +23,26 @@ describe('accountsApi', () => {
     it('fetches all accounts', async () => {
       const mockAccounts: ImapAccount[] = [
         {
-          id: 1,
+          id: '1',
           name: 'Test Account 1',
           host: 'imap.test1.com',
           port: 993,
           username: 'test1@test.com',
           password: 'password1',
           use_tls: true,
+          default_post_process_action: 'do_nothing',
           created_at: '2023-01-01T00:00:00Z',
           updated_at: '2023-01-01T00:00:00Z',
         },
         {
-          id: 2,
+          id: '2',
           name: 'Test Account 2',
           host: 'imap.test2.com',
           port: 993,
           username: 'test2@test.com',
           password: 'password2',
           use_tls: true,
+          default_post_process_action: 'mark_read',
           created_at: '2023-01-01T00:00:00Z',
           updated_at: '2023-01-01T00:00:00Z',
         },
@@ -74,20 +74,21 @@ describe('accountsApi', () => {
   describe('getById', () => {
     it('fetches account by ID', async () => {
       const mockAccount: ImapAccount = {
-        id: 1,
+        id: '1',
         name: 'Test Account',
         host: 'imap.test.com',
         port: 993,
         username: 'test@test.com',
         password: 'password',
         use_tls: true,
+        default_post_process_action: 'do_nothing',
         created_at: '2023-01-01T00:00:00Z',
         updated_at: '2023-01-01T00:00:00Z',
       }
 
       mockClient.get.mockResolvedValueOnce(mockAccount)
 
-      const result = await accountsApi.getById(1)
+      const result = await accountsApi.getById('1')
 
       expect(mockClient.get).toHaveBeenCalledWith('/api/imap-accounts/1')
       expect(result).toEqual(mockAccount)
@@ -96,7 +97,7 @@ describe('accountsApi', () => {
     it('handles not found', async () => {
       mockClient.get.mockRejectedValueOnce(new Error('HTTP 404: Not Found'))
 
-      await expect(accountsApi.getById(999)).rejects.toThrow('HTTP 404: Not Found')
+      await expect(accountsApi.getById('999')).rejects.toThrow('HTTP 404: Not Found')
     })
   })
 
@@ -109,11 +110,13 @@ describe('accountsApi', () => {
         username: 'new@test.com',
         password: 'newpassword',
         use_tls: true,
+        default_post_process_action: 'do_nothing',
       }
 
       const mockCreatedAccount: ImapAccount = {
-        id: 1,
+        id: '1',
         ...createRequest,
+        default_post_process_action: 'do_nothing',
         created_at: '2023-01-01T00:00:00Z',
         updated_at: '2023-01-01T00:00:00Z',
       }
@@ -134,6 +137,7 @@ describe('accountsApi', () => {
         username: 'new@test.com',
         password: 'newpassword',
         use_tls: true,
+        default_post_process_action: 'do_nothing',
       }
 
       mockClient.post.mockRejectedValueOnce(new Error('HTTP 400: Bad Request'))
@@ -154,15 +158,16 @@ describe('accountsApi', () => {
       }
 
       const mockUpdatedAccount: ImapAccount = {
-        id: 1,
+        id: '1',
         ...updateRequest,
+        default_post_process_action: 'do_nothing',
         created_at: '2023-01-01T00:00:00Z',
         updated_at: '2023-01-01T01:00:00Z',
       }
 
       mockClient.put.mockResolvedValueOnce(mockUpdatedAccount)
 
-      const result = await accountsApi.update(1, updateRequest)
+      const result = await accountsApi.update('1', updateRequest)
 
       expect(mockClient.put).toHaveBeenCalledWith('/api/imap-accounts/1', updateRequest)
       expect(result).toEqual(mockUpdatedAccount)
@@ -180,7 +185,7 @@ describe('accountsApi', () => {
 
       mockClient.put.mockRejectedValueOnce(new Error('HTTP 404: Not Found'))
 
-      await expect(accountsApi.update(999, updateRequest)).rejects.toThrow('HTTP 404: Not Found')
+      await expect(accountsApi.update('999', updateRequest)).rejects.toThrow('HTTP 404: Not Found')
     })
   })
 
@@ -188,7 +193,7 @@ describe('accountsApi', () => {
     it('deletes account', async () => {
       mockClient.delete.mockResolvedValueOnce(null)
 
-      await accountsApi.delete(1)
+      await accountsApi.delete('1')
 
       expect(mockClient.delete).toHaveBeenCalledWith('/api/imap-accounts/1')
     })
@@ -196,7 +201,7 @@ describe('accountsApi', () => {
     it('handles not found on delete', async () => {
       mockClient.delete.mockRejectedValueOnce(new Error('HTTP 404: Not Found'))
 
-      await expect(accountsApi.delete(999)).rejects.toThrow('HTTP 404: Not Found')
+      await expect(accountsApi.delete('999')).rejects.toThrow('HTTP 404: Not Found')
     })
   })
 
@@ -209,7 +214,7 @@ describe('accountsApi', () => {
 
       mockClient.post.mockResolvedValueOnce(mockResult)
 
-      const result = await accountsApi.testConnection(1)
+      const result = await accountsApi.testConnection('1')
 
       expect(mockClient.post).toHaveBeenCalledWith('/api/imap-accounts/1/test-connection')
       expect(result).toEqual(mockResult)
@@ -223,7 +228,7 @@ describe('accountsApi', () => {
 
       mockClient.post.mockResolvedValueOnce(mockResult)
 
-      const result = await accountsApi.testConnection(1)
+      const result = await accountsApi.testConnection('1')
 
       expect(result).toEqual(mockResult)
     })
@@ -231,7 +236,7 @@ describe('accountsApi', () => {
     it('handles API error during connection test', async () => {
       mockClient.post.mockRejectedValueOnce(new Error('HTTP 500: Internal Server Error'))
 
-      await expect(accountsApi.testConnection(1)).rejects.toThrow('HTTP 500: Internal Server Error')
+      await expect(accountsApi.testConnection('1')).rejects.toThrow('HTTP 500: Internal Server Error')
     })
   })
 })

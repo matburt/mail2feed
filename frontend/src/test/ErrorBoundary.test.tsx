@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
 
 // Mock console.error to avoid noise in tests
@@ -13,17 +13,18 @@ afterEach(() => {
   console.error = originalError
 })
 
-// Component that throws an error
-function ThrowError({ shouldThrow = false }: { shouldThrow?: boolean }) {
-  if (shouldThrow) {
-    throw new Error('Test error')
-  }
-  return <div>No error</div>
-}
+// Component that throws an error (not used but kept for potential future use)
+// function ThrowError({ shouldThrow = false }: { shouldThrow?: boolean }) {
+//   if (shouldThrow) {
+//     throw new Error('Test error')
+//   }
+//   return <div>No error</div>
+// }
 
 // Component that throws on render
 function AlwaysThrowError() {
   throw new Error('Render error')
+  return null // This will never be reached, but TypeScript needs it
 }
 
 describe('ErrorBoundary', () => {

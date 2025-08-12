@@ -1,23 +1,22 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { feedsApi } from '../api/feeds'
-import { ApiClient } from '../api/client'
 import type { Feed, CreateFeedRequest, UpdateFeedRequest } from '../types'
 
-// Mock the ApiClient
+// Mock the apiClient
+const mockClient = {
+  get: vi.fn(),
+  post: vi.fn(),
+  put: vi.fn(),
+  delete: vi.fn(),
+  patch: vi.fn(),
+}
+
 vi.mock('../api/client', () => ({
-  ApiClient: vi.fn().mockImplementation(() => ({
-    get: vi.fn(),
-    post: vi.fn(),
-    put: vi.fn(),
-    delete: vi.fn(),
-  })),
+  apiClient: mockClient
 }))
 
 describe('feedsApi', () => {
-  let mockClient: any
-
   beforeEach(() => {
-    mockClient = new ApiClient()
     vi.clearAllMocks()
   })
 
@@ -25,20 +24,20 @@ describe('feedsApi', () => {
     it('fetches all feeds', async () => {
       const mockFeeds: Feed[] = [
         {
-          id: 1,
-          name: 'Test Feed 1',
-          email_rule_id: 1,
+          id: '1',
+          title: 'Test Feed 1',
+          email_rule_id: '1',
           feed_type: 'rss',
-          description: 'Test Description 1',
+          is_active: true,
           created_at: '2023-01-01T00:00:00Z',
           updated_at: '2023-01-01T00:00:00Z',
         },
         {
-          id: 2,
-          name: 'Test Feed 2',
-          email_rule_id: 2,
+          id: '2',
+          title: 'Test Feed 2',
+          email_rule_id: '1',
           feed_type: 'atom',
-          description: 'Test Description 2',
+          is_active: true,
           created_at: '2023-01-01T00:00:00Z',
           updated_at: '2023-01-01T00:00:00Z',
         },
@@ -64,18 +63,18 @@ describe('feedsApi', () => {
   describe('getById', () => {
     it('fetches feed by ID', async () => {
       const mockFeed: Feed = {
-        id: 1,
-        name: 'Test Feed',
-        email_rule_id: 1,
+        id: '1',
+        title: 'Test Feed',
+        email_rule_id: '1',
         feed_type: 'rss',
-        description: 'Test Description',
+        is_active: true,
         created_at: '2023-01-01T00:00:00Z',
         updated_at: '2023-01-01T00:00:00Z',
       }
 
       mockClient.get.mockResolvedValueOnce(mockFeed)
 
-      const result = await feedsApi.getById(1)
+      const result = await feedsApi.getById('1')
 
       expect(mockClient.get).toHaveBeenCalledWith('/api/feeds/1')
       expect(result).toEqual(mockFeed)
@@ -84,44 +83,21 @@ describe('feedsApi', () => {
     it('handles not found', async () => {
       mockClient.get.mockRejectedValueOnce(new Error('HTTP 404: Not Found'))
 
-      await expect(feedsApi.getById(999)).rejects.toThrow('HTTP 404: Not Found')
+      await expect(feedsApi.getById('999')).rejects.toThrow('HTTP 404: Not Found')
     })
   })
 
   describe('create', () => {
-    it('creates new RSS feed', async () => {
+    it('creates new feed', async () => {
       const createRequest: CreateFeedRequest = {
-        name: 'New RSS Feed',
-        email_rule_id: 1,
+        title: 'New Feed',
+        email_rule_id: '1',
         feed_type: 'rss',
-        description: 'New RSS Description',
+        is_active: true,
       }
 
       const mockCreatedFeed: Feed = {
-        id: 1,
-        ...createRequest,
-        created_at: '2023-01-01T00:00:00Z',
-        updated_at: '2023-01-01T00:00:00Z',
-      }
-
-      mockClient.post.mockResolvedValueOnce(mockCreatedFeed)
-
-      const result = await feedsApi.create(createRequest)
-
-      expect(mockClient.post).toHaveBeenCalledWith('/api/feeds', createRequest)
-      expect(result).toEqual(mockCreatedFeed)
-    })
-
-    it('creates new Atom feed', async () => {
-      const createRequest: CreateFeedRequest = {
-        name: 'New Atom Feed',
-        email_rule_id: 1,
-        feed_type: 'atom',
-        description: 'New Atom Description',
-      }
-
-      const mockCreatedFeed: Feed = {
-        id: 1,
+        id: '1',
         ...createRequest,
         created_at: '2023-01-01T00:00:00Z',
         updated_at: '2023-01-01T00:00:00Z',
@@ -137,10 +113,10 @@ describe('feedsApi', () => {
 
     it('handles validation error', async () => {
       const createRequest: CreateFeedRequest = {
-        name: '',
-        email_rule_id: 1,
+        title: '',
+        email_rule_id: '1',
         feed_type: 'rss',
-        description: 'New Description',
+        is_active: true,
       }
 
       mockClient.post.mockRejectedValueOnce(new Error('HTTP 400: Bad Request'))
@@ -152,14 +128,14 @@ describe('feedsApi', () => {
   describe('update', () => {
     it('updates existing feed', async () => {
       const updateRequest: UpdateFeedRequest = {
-        name: 'Updated Feed',
-        email_rule_id: 1,
+        title: 'Updated Feed',
+        email_rule_id: '1',
         feed_type: 'atom',
-        description: 'Updated Description',
+        is_active: false,
       }
 
       const mockUpdatedFeed: Feed = {
-        id: 1,
+        id: '1',
         ...updateRequest,
         created_at: '2023-01-01T00:00:00Z',
         updated_at: '2023-01-01T01:00:00Z',
@@ -167,7 +143,7 @@ describe('feedsApi', () => {
 
       mockClient.put.mockResolvedValueOnce(mockUpdatedFeed)
 
-      const result = await feedsApi.update(1, updateRequest)
+      const result = await feedsApi.update('1', updateRequest)
 
       expect(mockClient.put).toHaveBeenCalledWith('/api/feeds/1', updateRequest)
       expect(result).toEqual(mockUpdatedFeed)
@@ -175,15 +151,15 @@ describe('feedsApi', () => {
 
     it('handles not found on update', async () => {
       const updateRequest: UpdateFeedRequest = {
-        name: 'Updated Feed',
-        email_rule_id: 1,
+        title: 'Updated Feed',
+        email_rule_id: '1',
         feed_type: 'rss',
-        description: 'Updated Description',
+        is_active: true,
       }
 
       mockClient.put.mockRejectedValueOnce(new Error('HTTP 404: Not Found'))
 
-      await expect(feedsApi.update(999, updateRequest)).rejects.toThrow('HTTP 404: Not Found')
+      await expect(feedsApi.update('999', updateRequest)).rejects.toThrow('HTTP 404: Not Found')
     })
   })
 
@@ -191,7 +167,7 @@ describe('feedsApi', () => {
     it('deletes feed', async () => {
       mockClient.delete.mockResolvedValueOnce(null)
 
-      await feedsApi.delete(1)
+      await feedsApi.delete('1')
 
       expect(mockClient.delete).toHaveBeenCalledWith('/api/feeds/1')
     })
@@ -199,103 +175,92 @@ describe('feedsApi', () => {
     it('handles not found on delete', async () => {
       mockClient.delete.mockRejectedValueOnce(new Error('HTTP 404: Not Found'))
 
-      await expect(feedsApi.delete(999)).rejects.toThrow('HTTP 404: Not Found')
+      await expect(feedsApi.delete('999')).rejects.toThrow('HTTP 404: Not Found')
     })
   })
 
-  describe('getByRuleId', () => {
-    it('fetches feeds by rule ID', async () => {
-      const mockFeeds: Feed[] = [
+  describe('getItems', () => {
+    it('fetches feed items', async () => {
+      const mockItems = [
         {
-          id: 1,
-          name: 'Feed 1',
-          email_rule_id: 1,
-          feed_type: 'rss',
-          description: 'Description 1',
+          id: '1',
+          feed_id: '1',
+          title: 'Item 1',
+          pub_date: '2023-01-01T00:00:00Z',
           created_at: '2023-01-01T00:00:00Z',
-          updated_at: '2023-01-01T00:00:00Z',
-        },
-        {
-          id: 2,
-          name: 'Feed 2',
-          email_rule_id: 1,
-          feed_type: 'atom',
-          description: 'Description 2',
-          created_at: '2023-01-01T00:00:00Z',
-          updated_at: '2023-01-01T00:00:00Z',
-        },
+        }
       ]
 
-      mockClient.get.mockResolvedValueOnce(mockFeeds)
+      mockClient.get.mockResolvedValueOnce(mockItems)
 
-      const result = await feedsApi.getByRuleId(1)
+      const result = await feedsApi.getItems('1')
 
-      expect(mockClient.get).toHaveBeenCalledWith('/api/feeds?email_rule_id=1')
-      expect(result).toEqual(mockFeeds)
+      expect(mockClient.get).toHaveBeenCalledWith('/api/feeds/1/items')
+      expect(result).toEqual(mockItems)
     })
 
-    it('handles empty result for rule', async () => {
-      mockClient.get.mockResolvedValueOnce([])
+    it('fetches feed items with limit', async () => {
+      const mockItems = []
+      mockClient.get.mockResolvedValueOnce(mockItems)
 
-      const result = await feedsApi.getByRuleId(999)
+      await feedsApi.getItems('1', 10)
 
-      expect(result).toEqual([])
+      expect(mockClient.get).toHaveBeenCalledWith('/api/feeds/1/items?limit=10')
     })
   })
 
-  describe('getRssFeed', () => {
+  describe('getRss', () => {
     it('fetches RSS feed content', async () => {
-      const mockRssContent = `<?xml version="1.0"?>
-<rss version="2.0">
-  <channel>
-    <title>Test Feed</title>
-    <description>Test Description</description>
-    <item>
-      <title>Test Item</title>
-      <description>Test Item Description</description>
-    </item>
-  </channel>
-</rss>`
+      const mockRssFeed = '<?xml version="1.0"?>'
+      
+      mockClient.get.mockResolvedValueOnce(mockRssFeed)
 
-      mockClient.get.mockResolvedValueOnce(mockRssContent)
-
-      const result = await feedsApi.getRssFeed(1)
+      const result = await feedsApi.getRss('1')
 
       expect(mockClient.get).toHaveBeenCalledWith('/feeds/1/rss')
-      expect(result).toEqual(mockRssContent)
+      expect(result).toBe(mockRssFeed)
     })
 
-    it('handles not found for RSS feed', async () => {
+    it('handles RSS feed not found', async () => {
       mockClient.get.mockRejectedValueOnce(new Error('HTTP 404: Not Found'))
 
-      await expect(feedsApi.getRssFeed(999)).rejects.toThrow('HTTP 404: Not Found')
+      await expect(feedsApi.getRss('999')).rejects.toThrow('HTTP 404: Not Found')
     })
   })
 
-  describe('getAtomFeed', () => {
+  describe('getAtom', () => {
     it('fetches Atom feed content', async () => {
-      const mockAtomContent = `<?xml version="1.0"?>
-<feed xmlns="http://www.w3.org/2005/Atom">
-  <title>Test Feed</title>
-  <subtitle>Test Description</subtitle>
-  <entry>
-    <title>Test Item</title>
-    <content>Test Item Description</content>
-  </entry>
-</feed>`
+      const mockAtomFeed = '<?xml version="1.0" encoding="utf-8"?>'
+      
+      mockClient.get.mockResolvedValueOnce(mockAtomFeed)
 
-      mockClient.get.mockResolvedValueOnce(mockAtomContent)
-
-      const result = await feedsApi.getAtomFeed(1)
+      const result = await feedsApi.getAtom('1')
 
       expect(mockClient.get).toHaveBeenCalledWith('/feeds/1/atom')
-      expect(result).toEqual(mockAtomContent)
+      expect(result).toBe(mockAtomFeed)
     })
 
-    it('handles not found for Atom feed', async () => {
+    it('handles Atom feed not found', async () => {
       mockClient.get.mockRejectedValueOnce(new Error('HTTP 404: Not Found'))
 
-      await expect(feedsApi.getAtomFeed(999)).rejects.toThrow('HTTP 404: Not Found')
+      await expect(feedsApi.getAtom('999')).rejects.toThrow('HTTP 404: Not Found')
+    })
+  })
+
+  describe('processAll', () => {
+    it('processes all accounts', async () => {
+      const mockStatus = {
+        total_emails_processed: 10,
+        new_feed_items_created: 5,
+        errors: [],
+      }
+      
+      mockClient.post.mockResolvedValueOnce(mockStatus)
+
+      const result = await feedsApi.processAll()
+
+      expect(mockClient.post).toHaveBeenCalledWith('/api/imap/process-all', {})
+      expect(result).toEqual(mockStatus)
     })
   })
 })

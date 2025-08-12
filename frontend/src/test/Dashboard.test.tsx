@@ -3,6 +3,7 @@ import { BrowserRouter } from 'react-router-dom'
 import { vi } from 'vitest'
 import Dashboard from '../pages/Dashboard'
 import { AppProvider } from '../context/AppContext'
+import { ToastProvider } from '../components/common/Toast'
 import type { ImapAccount, EmailRule, Feed } from '../types'
 
 // Mock Chart.js to avoid canvas issues in tests
@@ -28,24 +29,26 @@ vi.mock('react-chartjs-2', () => ({
 
 const mockAccounts: ImapAccount[] = [
   {
-    id: 1,
+    id: '1',
     name: 'Gmail Account',
     host: 'imap.gmail.com',
     port: 993,
     username: 'test@gmail.com',
     password: 'password',
     use_tls: true,
+    default_post_process_action: 'do_nothing',
     created_at: '2023-01-01T00:00:00Z',
     updated_at: '2023-01-01T00:00:00Z',
   },
   {
-    id: 2,
+    id: '2',
     name: 'Outlook Account',
     host: 'imap.outlook.com',
     port: 993,
     username: 'test@outlook.com',
     password: 'password',
     use_tls: true,
+    default_post_process_action: 'mark_read',
     created_at: '2023-01-01T00:00:00Z',
     updated_at: '2023-01-01T00:00:00Z',
   },
@@ -53,32 +56,38 @@ const mockAccounts: ImapAccount[] = [
 
 const mockRules: EmailRule[] = [
   {
-    id: 1,
+    id: '1',
     name: 'Newsletter Rule',
-    imap_account_id: 1,
-    from_pattern: 'newsletter@example.com',
-    subject_pattern: 'Newsletter',
-    body_pattern: null,
+    imap_account_id: '1',
+    folder: 'INBOX',
+    from_address: 'newsletter@example.com',
+    subject_contains: 'Newsletter',
+    is_active: true,
+    post_process_action: 'do_nothing',
     created_at: '2023-01-01T00:00:00Z',
     updated_at: '2023-01-01T00:00:00Z',
   },
   {
-    id: 2,
+    id: '2',
     name: 'Support Rule',
-    imap_account_id: 1,
-    from_pattern: 'support@example.com',
-    subject_pattern: 'Support',
-    body_pattern: null,
+    imap_account_id: '1',
+    folder: 'INBOX',
+    from_address: 'support@example.com',
+    subject_contains: 'Support',
+    is_active: true,
+    post_process_action: 'mark_read',
     created_at: '2023-01-01T00:00:00Z',
     updated_at: '2023-01-01T00:00:00Z',
   },
   {
-    id: 3,
+    id: '3',
     name: 'Marketing Rule',
-    imap_account_id: 2,
-    from_pattern: 'marketing@example.com',
-    subject_pattern: 'Marketing',
-    body_pattern: null,
+    imap_account_id: '2',
+    folder: 'INBOX',
+    from_address: 'marketing@example.com',
+    subject_contains: 'Marketing',
+    is_active: true,
+    post_process_action: 'delete',
     created_at: '2023-01-01T00:00:00Z',
     updated_at: '2023-01-01T00:00:00Z',
   },
@@ -86,44 +95,80 @@ const mockRules: EmailRule[] = [
 
 const mockFeeds: Feed[] = [
   {
-    id: 1,
-    name: 'Newsletter Feed',
-    email_rule_id: 1,
+    id: '1',
+    title: 'Newsletter Feed',
+    email_rule_id: '1',
     feed_type: 'rss',
-    description: 'Newsletter RSS Feed',
+    is_active: true,
     created_at: '2023-01-01T00:00:00Z',
     updated_at: '2023-01-01T00:00:00Z',
   },
   {
-    id: 2,
-    name: 'Support Feed',
-    email_rule_id: 2,
+    id: '2',
+    title: 'Support Feed',
+    email_rule_id: '2',
     feed_type: 'atom',
-    description: 'Support Atom Feed',
+    is_active: true,
     created_at: '2023-01-01T00:00:00Z',
     updated_at: '2023-01-01T00:00:00Z',
   },
 ]
 
-function TestWrapper({ children, initialState = {} }: { children: React.ReactNode; initialState?: any }) {
-  const defaultState = {
-    accounts: [],
-    rules: [],
-    feeds: [],
-    processing: false,
-    ...initialState,
+// Mock the useAppContext hook to provide test data
+vi.mock('../context/AppContext', async () => {
+  const actual = await vi.importActual('../context/AppContext')
+  return {
+    ...actual,
+    useAppContext: () => ({
+      state: mockState,
+      dispatch: vi.fn(),
+    })
   }
+})
 
+// Mock the background service hook
+vi.mock('../hooks/useBackgroundService', () => ({
+  useBackgroundService: () => ({
+    status: null,
+    isLoading: false,
+    error: null,
+    retryConnection: vi.fn(),
+  })
+}))
+
+let mockState: any = {
+  accounts: [],
+  rules: [],
+  feeds: [],
+  processing: null,
+  loading: false,
+  error: null,
+}
+
+function TestWrapper({ children }: { children: React.ReactNode }) {
   return (
     <BrowserRouter>
-      <AppProvider initialState={defaultState}>
-        {children}
-      </AppProvider>
+      <ToastProvider>
+        <AppProvider>
+          {children}
+        </AppProvider>
+      </ToastProvider>
     </BrowserRouter>
   )
 }
 
 describe('Dashboard', () => {
+  beforeEach(() => {
+    mockState = {
+      accounts: [],
+      rules: [],
+      feeds: [],
+      processing: null,
+      loading: false,
+      error: null,
+    }
+  })
+
   it('renders dashboard with empty state', () => {
     render(
       <TestWrapper>
@@ -139,8 +184,17 @@ describe('Dashboard', () => {
   })
 
   it('displays correct counts with data', () => {
+    mockState = {
+      accounts: mockAccounts,
+      rules: mockRules,
+      feeds: mockFeeds,
+      processing: null,
+      loading: false,
+      error: null,
+    }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -156,8 +210,10 @@ describe('Dashboard', () => {
   })
 
   it('displays recent activity section', () => {
+    mockState = { accounts: mockAccounts, rules: mockRules, feeds: mockFeeds, processing: null, loading: false, error: null }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -166,8 +222,10 @@ describe('Dashboard', () => {
   })
 
   it('displays quick actions section', () => {
+    mockState = { accounts: mockAccounts, rules: mockRules, feeds: mockFeeds, processing: null, loading: false, error: null }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -179,8 +237,10 @@ describe('Dashboard', () => {
   })
 
   it('displays feed statistics chart', () => {
+    mockState = { accounts: mockAccounts, rules: mockRules, feeds: mockFeeds, processing: null, loading: false, error: null }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -190,14 +250,22 @@ describe('Dashboard', () => {
   })
 
   it('displays processing status when active', () => {
+    mockState = {
+      accounts: mockAccounts,
+      rules: mockRules,
+      feeds: mockFeeds,
+      processing: {
+        total_emails_processed: 10,
+        new_feed_items_created: 5,
+        errors: []
+      },
+      processingProgress: 65,
+      loading: false,
+      error: null,
+    }
+
     render(
-      <TestWrapper initialState={{ 
-        accounts: mockAccounts, 
-        rules: mockRules, 
-        feeds: mockFeeds,
-        processing: true,
-        processingProgress: 65
-      }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -208,13 +276,17 @@ describe('Dashboard', () => {
   })
 
   it('does not display processing status when inactive', () => {
+    mockState = {
+      accounts: mockAccounts,
+      rules: mockRules,
+      feeds: mockFeeds,
+      processing: null,
+      loading: false,
+      error: null,
+    }
+
     render(
-      <TestWrapper initialState={{ 
-        accounts: mockAccounts, 
-        rules: mockRules, 
-        feeds: mockFeeds,
-        processing: false
-      }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -224,8 +296,10 @@ describe('Dashboard', () => {
   })
 
   it('displays system health indicators', () => {
+    mockState = { accounts: mockAccounts, rules: mockRules, feeds: mockFeeds, processing: null, loading: false, error: null }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -235,8 +309,10 @@ describe('Dashboard', () => {
   })
 
   it('displays feed type distribution', () => {
+    mockState = { accounts: mockAccounts, rules: mockRules, feeds: mockFeeds, processing: null, loading: false, error: null }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -247,8 +323,10 @@ describe('Dashboard', () => {
   })
 
   it('displays account distribution', () => {
+    mockState = { accounts: mockAccounts, rules: mockRules, feeds: mockFeeds, processing: null, loading: false, error: null }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -259,8 +337,10 @@ describe('Dashboard', () => {
   })
 
   it('renders with proper accessibility attributes', () => {
+    mockState = { accounts: mockAccounts, rules: mockRules, feeds: mockFeeds, processing: null, loading: false, error: null }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -273,8 +353,10 @@ describe('Dashboard', () => {
   })
 
   it('has responsive grid layout', () => {
+    mockState = { accounts: mockAccounts, rules: mockRules, feeds: mockFeeds, processing: null, loading: false, error: null }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -297,8 +379,17 @@ describe('Dashboard', () => {
   })
 
   it('shows proper loading states', () => {
+    mockState = {
+      accounts: [],
+      rules: [],
+      feeds: [],
+      processing: { total_emails_processed: 5, new_feed_items_created: 2, errors: [] },
+      loading: false,
+      error: null,
+    }
+
     render(
-      <TestWrapper initialState={{ processing: true }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -307,8 +398,10 @@ describe('Dashboard', () => {
   })
 
   it('displays navigation links to other sections', () => {
+    mockState = { accounts: mockAccounts, rules: mockRules, feeds: mockFeeds, processing: null, loading: false, error: null }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
@@ -319,8 +412,10 @@ describe('Dashboard', () => {
   })
 
   it('displays recent items when data is available', () => {
+    mockState = { accounts: mockAccounts, rules: mockRules, feeds: mockFeeds, processing: null, loading: false, error: null }
+
     render(
-      <TestWrapper initialState={{ accounts: mockAccounts, rules: mockRules, feeds: mockFeeds }}>
+      <TestWrapper>
         <Dashboard />
       </TestWrapper>
     )
