@@ -12,6 +12,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Converts each mailing list into its own feed
 - Web GUI for managing email rules and feeds
 - Dual database support: SQLite and PostgreSQL
+- Kubernetes deployment with Helm charts
 
 ## Architecture
 
@@ -68,8 +69,6 @@ backend/
 ## Development Commands
 
 ### Quick Start Scripts
-
-#### SQLite (Default)
 ```bash
 ./scripts/setup.sh   # Complete development environment setup
 ./scripts/dev.sh     # Start development server with hot reloading
@@ -77,32 +76,28 @@ backend/
 ./scripts/clean.sh   # Clean build artifacts and temporary files
 ```
 
-#### PostgreSQL
+### PostgreSQL Development
 ```bash
-./scripts/setup_postgres.sh  # Set up PostgreSQL with Docker
-./scripts/dev_postgres.sh    # Start development server with PostgreSQL
-./scripts/test_postgres.sh   # Run PostgreSQL integration tests
+./scripts/setup_postgres.sh    # Setup PostgreSQL development environment
+./scripts/dev_postgres.sh      # Start development server with PostgreSQL
+./scripts/migrate.sh           # Run database migrations
+```
+
+### Kubernetes Deployment
+```bash
+./scripts/k8s-test.sh           # Test Kubernetes deployment templates
+./scripts/k8s-deploy.sh -e dev  # Deploy to Kubernetes (development)
+./scripts/k8s-deploy.sh -e prod # Deploy to Kubernetes (production)
 ```
 
 ### Backend (Rust)
-
-#### SQLite (Default)
 ```bash
 cd backend
 cargo build          # Build the project
-cargo run           # Run the development server  
+cargo run           # Run the development server
 cargo test          # Run tests
 cargo clippy        # Run linter
 cargo fmt           # Format code
-```
-
-#### PostgreSQL
-```bash
-cd backend
-cargo build --features postgres    # Build with PostgreSQL support
-cargo run --features postgres      # Run with PostgreSQL
-cargo test --features postgres     # Run tests with PostgreSQL
-cargo run --bin test_postgres --features postgres  # Test PostgreSQL integration
 ```
 
 ### Frontend (TypeScript)
@@ -114,41 +109,6 @@ npm run build       # Build for production
 npm run lint        # Run ESLint
 npm run test        # Run tests with coverage
 npm run type-check  # Run TypeScript type checking
-```
-
-## Environment Configuration
-
-### SQLite (Default)
-```bash
-DATABASE_URL=sqlite:./data/mail2feed.db  # SQLite database file
-```
-
-### PostgreSQL
-```bash
-DATABASE_URL=postgresql://mail2feed_user:mail2feed_pass@localhost:5432/mail2feed
-```
-
-### Docker Compose (PostgreSQL Development)
-```bash
-# Start PostgreSQL only
-docker-compose up -d postgres
-
-# Start PostgreSQL with pgAdmin
-docker-compose --profile pgadmin up -d
-
-# Start full stack (backend + frontend)
-docker-compose --profile backend --profile frontend up -d
-
-# PostgreSQL connection details:
-# Host: localhost:5432
-# Database: mail2feed
-# Username: mail2feed_user  
-# Password: mail2feed_pass
-
-# pgAdmin access:
-# URL: http://localhost:8080
-# Email: admin@mail2feed.local
-# Password: admin123
 ```
 
 ## Project Structure
@@ -183,16 +143,29 @@ mail2feed/
 │   │   └── context/        # State management
 │   └── package.json        # Frontend dependencies
 ├── scripts/                # ✅ Development and deployment scripts
-│   ├── setup.sh           # Complete development environment setup (SQLite)
-│   ├── dev.sh             # Start development server (SQLite)
-│   ├── test.sh            # Run all tests (SQLite)
+│   ├── setup.sh           # Complete development environment setup
+│   ├── dev.sh             # Start development server
+│   ├── test.sh            # Run all tests
 │   ├── clean.sh           # Clean build artifacts
-│   ├── setup_postgres.sh  # PostgreSQL environment setup
-│   ├── dev_postgres.sh    # Start development server (PostgreSQL)
-│   └── test_postgres.sh   # PostgreSQL integration tests
+│   ├── setup_postgres.sh  # PostgreSQL development setup
+│   ├── dev_postgres.sh    # Start with PostgreSQL
+│   ├── migrate.sh         # Run database migrations
+│   ├── k8s-test.sh        # Test Kubernetes deployment
+│   └── k8s-deploy.sh      # Deploy to Kubernetes
+├── data/                   # ✅ Database files (created by setup)
 ├── k8s/                    # ✅ Kubernetes deployment configurations
-├── data/                   # ✅ SQLite database files (created by setup)
-├── docker-compose.yml      # ✅ PostgreSQL development environment
+│   ├── mail2feed/          # Helm chart for Kubernetes deployment
+│   │   ├── Chart.yaml      # Chart metadata
+│   │   ├── values.yaml     # Default configuration values
+│   │   ├── values-dev.yaml # Development environment overrides
+│   │   ├── values-prod.yaml# Production environment overrides
+│   │   └── templates/      # Kubernetes resource templates
+│   │       ├── postgresql/ # PostgreSQL database deployment
+│   │       ├── backend/    # Backend service deployment
+│   │       ├── frontend/   # Frontend service deployment
+│   │       └── pgadmin/    # pgAdmin (development tool)
+│   └── README.md           # Kubernetes deployment guide
+├── docker-compose.yml      # ✅ Docker Compose for local development
 ├── README.md               # ✅ Complete project documentation
 └── CLAUDE.md               # This file
 ```
@@ -234,11 +207,19 @@ mail2feed/
 - ✅ Toast notifications for user feedback
 - ✅ 85-90% test coverage
 
-### 📅 Phase 5: Integration & Testing (PLANNED)
+### ✅ Phase 5: Database & Deployment (COMPLETED)
+- **Database Support**: Complete dual-database support (SQLite + PostgreSQL)
+- **Kubernetes Deployment**: Full Helm chart with development and production configurations
+- **Container Images**: Production-ready Dockerfiles for backend and frontend
+- **PostgreSQL Integration**: Database abstraction layer with automatic detection
+- **Database Operations**: Complete CRUD operations for both database types
+- **Migration System**: Separate migration runners for SQLite and PostgreSQL
+
+### 📅 Phase 6: Integration & Testing (PLANNED)
 - **GitHub Issue**: [#4 - Integration and Testing](https://github.com/matburt/mail2feed/issues/4)
 - End-to-end testing with real IMAP servers
 - Performance optimization and monitoring
-- Deployment documentation and Docker containers
+- Production deployment testing
 
 ## Implemented API Endpoints
 

@@ -3,81 +3,79 @@ version: '3.8'
 services:
   # PostgreSQL Database
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
+    container_name: mail2feed-postgres
     environment:
       POSTGRES_DB: mail2feed
       POSTGRES_USER: mail2feed_user
-      POSTGRES_PASSWORD: mail2feed_pass
-      POSTGRES_HOST_AUTH_METHOD: trust
+      POSTGRES_PASSWORD: mail2feed_password
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/migrations_postgres:/docker-entrypoint-initdb.d/migrations:ro
+      - ./init-postgres.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mail2feed_user -d mail2feed"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    networks:
-      - mail2feed-network
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # pgAdmin for PostgreSQL management (optional)
+  # pgAdmin for database management (optional)
   pgadmin:
-    image: dpage/pgadmin4:7
+    image: dpage/pgadmin4:latest
+    container_name: mail2feed-pgadmin
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@mail2feed.local
       PGADMIN_DEFAULT_PASSWORD: admin123
-      PGADMIN_CONFIG_SERVER_MODE: 'False'
+      PGADMIN_LISTEN_PORT: 80
     ports:
       - "8080:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    depends_on:
-      - postgres
-    networks:
-      - mail2feed-network
-    profiles:
-      - pgadmin
-
-  # Mail2Feed Backend (for testing PostgreSQL integration)
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    environment:
-      DATABASE_URL: postgresql://mail2feed_user:mail2feed_pass@postgres:5432/mail2feed
-      RUST_LOG: debug
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
-    networks:
-      - mail2feed-network
-    profiles:
-      - backend
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
 
-  # Mail2Feed Frontend (optional)
+  # Backend service (when ready for testing)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: mail2feed-backend
+    environment:
+      DATABASE_URL: postgres://mail2feed_user:mail2feed_password@postgres:5432/mail2feed
+      RUST_LOG: debug
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - cargo_cache:/usr/local/cargo/registry
+    working_dir: /app
+    profiles:
+      - backend  # Use docker-compose --profile backend up to include this service
+
+  # Frontend service
   frontend:
     build:
       context: ./frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
+    container_name: mail2feed-frontend
     environment:
-      VITE_API_URL: http://localhost:8000
+      VITE_API_URL: http://localhost:3001
     ports:
-      - "3002:3000"
-    depends_on:
-      - backend
-    networks:
-      - mail2feed-network
+      - "3002:3002"
+    volumes:
+      - ./frontend:/app
+      - node_modules_cache:/app/node_modules
+    working_dir: /app
     profiles:
-      - frontend
+      - frontend  # Use docker-compose --profile frontend up to include this service
 
 volumes:
   postgres_data:
   pgadmin_data:
-
-networks:
-  mail2feed-network:
-    driver: bridge
+  cargo_cache:
+  node_modules_cache:
