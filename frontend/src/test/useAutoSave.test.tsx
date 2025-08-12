@@ -218,7 +218,7 @@ describe('useAutoSave', () => {
       new Promise(resolve => setTimeout(resolve, 500))
     )
     
-    const { rerender, result } = renderHook(
+    const { rerender } = renderHook(
       ({ data }) => useAutoSave({
         data,
         saveFunction: mockSaveFunction,

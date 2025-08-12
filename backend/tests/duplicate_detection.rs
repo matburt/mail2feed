@@ -102,6 +102,8 @@ fn setup_test_data(pool: &Pool<ConnectionManager<SqliteConnection>>) -> (String,
         use_tls: true,
         created_at: Utc::now().to_rfc3339(),
         updated_at: Utc::now().to_rfc3339(),
+        default_post_process_action: "do_nothing".to_string(),
+        default_move_to_folder: None,
     };
     
     let created_account = ImapAccountOps::create(&mut conn, &account).unwrap();

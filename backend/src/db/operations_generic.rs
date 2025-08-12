@@ -1,7 +1,6 @@
 use crate::db::models::*;
 use crate::db::connection::DatabasePool;
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 
 pub struct ImapAccountOpsGeneric;
 

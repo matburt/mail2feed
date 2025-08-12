@@ -385,7 +385,7 @@ describe('Integration Tests', () => {
     it('loads efficiently with large datasets', async () => {
       const largeAccountList = Array.from({ length: 100 }, (_, i) => ({
         ...mockAccount,
-        id: i + 1,
+        id: String(i + 1),
         name: `Account ${i + 1}`,
       }))
 

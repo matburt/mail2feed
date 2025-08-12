@@ -1,0 +1,57 @@
+# External Database Configuration Example
+# Use this when connecting to an external PostgreSQL database (RDS, Cloud SQL, etc.)
+
+# Disable internal PostgreSQL
+postgresql:
+  enabled: false
+
+# Configure external database
+externalDatabase:
+  host: "your-database-host.amazonaws.com"  # Replace with your database host
+  port: 5432
+  database: mail2feed
+  username: mail2feed_user
+  password: "your-secure-password"  # Replace with your password
+  sslmode: require  # Use SSL for security
+  connectionParams: "connect_timeout=30"  # Optional connection parameters
+
+backend:
+  replicaCount: 2  # Multiple replicas for production
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+frontend:
+  replicaCount: 2
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# pgAdmin not needed when using external database
+pgadmin:
+  enabled: false
+
+# Enable ingress for production
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: mail2feed.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: mail2feed-tls
+      hosts:
+        - mail2feed.example.com

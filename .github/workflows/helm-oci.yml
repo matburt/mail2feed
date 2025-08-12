@@ -1,0 +1,80 @@
+name: Helm OCI
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Chart version to publish'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  CHART_NAME: mail2feed
+
+jobs:
+  publish-helm-chart:
+    name: Publish Helm Chart to OCI Registry
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract version
+      id: version
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          VERSION="${{ github.event.inputs.version }}"
+        else
+          VERSION=${GITHUB_REF#refs/tags/v}
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "VERSION: $VERSION"
+
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: '3.12.0'
+
+    - name: Add Helm repositories
+      run: |
+        helm repo add bitnami https://charts.bitnami.com/bitnami
+        helm repo update
+
+    - name: Log in to Container Registry
+      run: |
+        echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} --username ${{ github.actor }} --password-stdin
+
+    - name: Update Chart metadata
+      run: |
+        VERSION=${{ steps.version.outputs.version }}
+        REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        
+        # Update Chart.yaml
+        sed -i "s/version: .*/version: $VERSION/" k8s/mail2feed/Chart.yaml
+        sed -i "s/appVersion: .*/appVersion: \"$VERSION\"/" k8s/mail2feed/Chart.yaml
+        
+        # Update image repositories and tags
+        sed -i "s|repository: mail2feed/backend|repository: ghcr.io/$REPO_LOWER/backend|" k8s/mail2feed/values*.yaml
+        sed -i "s|repository: mail2feed/frontend|repository: ghcr.io/$REPO_LOWER/frontend|" k8s/mail2feed/values*.yaml
+        sed -i "s/tag: \".*\"/tag: \"$VERSION\"/" k8s/mail2feed/values.yaml
+        sed -i "s/tag: \".*\"/tag: \"$VERSION\"/" k8s/mail2feed/values-dev.yaml
+        sed -i "s/tag: \".*\"/tag: \"$VERSION\"/" k8s/mail2feed/values-prod.yaml
+
+    - name: Build Helm dependencies
+      run: |
+        cd k8s
+        helm dependency build mail2feed/
+
+    - name: Package and push Helm chart
+      run: |
+        cd k8s
+        helm package mail2feed/
+        helm push mail2feed-${{ steps.version.outputs.version }}.tgz oci://${{ env.REGISTRY }}/$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')/helm

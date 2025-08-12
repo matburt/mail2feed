@@ -25,4 +25,8 @@ export const rulesApi = {
   // Delete email rule
   delete: (id: string) => 
     apiClient.delete<void>(`/api/email-rules/${id}`),
+
+  // Get rules by account ID
+  getByAccountId: (accountId: string) => 
+    apiClient.get<EmailRule[]>(`/api/email-rules?account_id=${accountId}`),
 }

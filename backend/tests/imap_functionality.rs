@@ -78,6 +78,8 @@ fn test_protonmail_bridge_account_config() {
         use_tls: false, // ProtonMail Bridge typically uses plain connection locally
         created_at: Utc::now().to_rfc3339(),
         updated_at: Utc::now().to_rfc3339(),
+        default_post_process_action: "do_nothing".to_string(),
+        default_move_to_folder: None,
     };
     
     // Verify ProtonMail Bridge characteristics
@@ -99,6 +101,8 @@ fn test_gmail_bridge_account_config() {
         use_tls: true, // Gmail requires TLS
         created_at: Utc::now().to_rfc3339(),
         updated_at: Utc::now().to_rfc3339(),
+        default_post_process_action: "do_nothing".to_string(),
+        default_move_to_folder: None,
     };
     
     // Verify Gmail characteristics
@@ -121,6 +125,8 @@ fn test_imap_client_creation() {
         use_tls: false,
         created_at: Utc::now().to_rfc3339(),
         updated_at: Utc::now().to_rfc3339(),
+        default_post_process_action: "do_nothing".to_string(),
+        default_move_to_folder: None,
     };
     
     let client_result = ImapClient::new(&account);
@@ -415,6 +421,8 @@ mod protonmail_bridge_tests {
             use_tls: false,                 // Plain connection for local bridge
             created_at: Utc::now().to_rfc3339(),
             updated_at: Utc::now().to_rfc3339(),
+            default_post_process_action: "do_nothing".to_string(),
+            default_move_to_folder: None,
         };
         
         // Verify characteristics that make ProtonMail Bridge work

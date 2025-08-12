@@ -1,0 +1,232 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-images:
+    name: Build and Push Container Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      version: ${{ steps.meta.outputs.tags }}
+      backend-digest: ${{ steps.build-backend.outputs.digest }}
+      frontend-digest: ${{ steps.build-frontend.outputs.digest }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract version from tag
+      id: version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "VERSION: $VERSION"
+
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata for backend
+      id: meta-backend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/backend
+        tags: |
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=ref,event=branch
+          type=sha,prefix=sha-
+
+    - name: Extract metadata for frontend
+      id: meta-frontend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}/frontend
+        tags: |
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+          type=semver,pattern={{major}}
+          type=ref,event=branch
+          type=sha,prefix=sha-
+
+    - name: Build and push backend image
+      id: build-backend
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        file: ./backend/Dockerfile
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta-backend.outputs.tags }}
+        labels: ${{ steps.meta-backend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Build and push frontend image
+      id: build-frontend
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        file: ./frontend/Dockerfile
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta-frontend.outputs.tags }}
+        labels: ${{ steps.meta-frontend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  release-helm-chart:
+    name: Release Helm Chart
+    runs-on: ubuntu-latest
+    needs: build-and-push-images
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Extract version from tag
+      id: version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "VERSION: $VERSION"
+
+    - name: Setup Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: '3.12.0'
+
+    - name: Add Helm repositories
+      run: |
+        helm repo add bitnami https://charts.bitnami.com/bitnami
+        helm repo update
+
+    - name: Update Chart version and appVersion
+      run: |
+        VERSION=${{ steps.version.outputs.version }}
+        sed -i "s/version: .*/version: $VERSION/" k8s/mail2feed/Chart.yaml
+        sed -i "s/appVersion: .*/appVersion: \"$VERSION\"/" k8s/mail2feed/Chart.yaml
+        
+        # Update image tags in default values
+        sed -i "s/tag: \".*\"/tag: \"$VERSION\"/" k8s/mail2feed/values.yaml
+        sed -i "s/tag: \".*\"/tag: \"$VERSION\"/" k8s/mail2feed/values-dev.yaml
+        sed -i "s/tag: \".*\"/tag: \"$VERSION\"/" k8s/mail2feed/values-prod.yaml
+
+    - name: Update image repositories to use GitHub Container Registry
+      run: |
+        REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        sed -i "s|repository: mail2feed/backend|repository: ghcr.io/$REPO_LOWER/backend|" k8s/mail2feed/values*.yaml
+        sed -i "s|repository: mail2feed/frontend|repository: ghcr.io/$REPO_LOWER/frontend|" k8s/mail2feed/values*.yaml
+
+    - name: Build Helm dependencies
+      run: |
+        cd k8s
+        helm dependency build mail2feed/
+
+    - name: Package Helm chart
+      run: |
+        cd k8s
+        helm package mail2feed/ --destination ./packaged/
+        
+    - name: Generate Helm index
+      run: |
+        cd k8s
+        helm repo index packaged/ --url https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/
+
+    - name: Upload Helm chart to release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          k8s/packaged/*.tgz
+          k8s/packaged/index.yaml
+        generate_release_notes: true
+        draft: false
+        prerelease: false
+
+  create-github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-and-push-images, release-helm-chart]
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Extract version from tag
+      id: version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+    - name: Generate release notes
+      id: release-notes
+      run: |
+        VERSION=${{ steps.version.outputs.version }}
+        cat > release-notes.md << EOF
+        # Mail2Feed Release v$VERSION
+        
+        ## 📦 Container Images
+        
+        - **Backend**: \`ghcr.io/${{ github.repository }}/backend:$VERSION\`
+        - **Frontend**: \`ghcr.io/${{ github.repository }}/frontend:$VERSION\`
+        
+        ## ⚡ Helm Chart
+        
+        \`\`\`bash
+        # Add the Helm repository
+        helm repo add mail2feed https://github.com/${{ github.repository }}/releases/download/v$VERSION/
+        helm repo update
+        
+        # Install mail2feed
+        helm install mail2feed mail2feed/mail2feed --version $VERSION
+        \`\`\`
+        
+        Or download directly:
+        - [Helm Chart (mail2feed-$VERSION.tgz)](https://github.com/${{ github.repository }}/releases/download/v$VERSION/mail2feed-$VERSION.tgz)
+        
+        ## 🚀 Quick Deploy
+        
+        \`\`\`bash
+        # Development
+        helm install mail2feed-dev oci://ghcr.io/${{ github.repository }}/helm/mail2feed --version $VERSION
+        
+        # Production with external database
+        helm install mail2feed-prod oci://ghcr.io/${{ github.repository }}/helm/mail2feed --version $VERSION -f values-prod.yaml
+        \`\`\`
+        
+        ## 📋 What's Changed
+        EOF
+        
+        echo "notes-file=release-notes.md" >> $GITHUB_OUTPUT
+
+    - name: Update release with enhanced notes
+      uses: softprops/action-gh-release@v1
+      with:
+        body_path: release-notes.md
+        draft: false
+        prerelease: false

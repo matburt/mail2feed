@@ -145,6 +145,7 @@ export interface ConnectionTestResult {
   success: boolean
   folders?: string[]
   error?: string
+  message?: string
 }
 
 // App State Types
@@ -155,6 +156,7 @@ export interface AppState {
   processing: ProcessingStatus | null
   loading: boolean
   error: string | null
+  processingProgress?: number
 }
 
 // UI State Types

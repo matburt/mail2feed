@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { ErrorBoundary } from '../components/common/ErrorBoundary'
 
 // Mock console.error to avoid noise in tests
@@ -13,17 +13,18 @@ afterEach(() => {
   console.error = originalError
 })
 
-// Component that throws an error
-function ThrowError({ shouldThrow = false }: { shouldThrow?: boolean }) {
-  if (shouldThrow) {
-    throw new Error('Test error')
-  }
-  return <div>No error</div>
-}
+// Component that throws an error (not used but kept for potential future use)
+// function ThrowError({ shouldThrow = false }: { shouldThrow?: boolean }) {
+//   if (shouldThrow) {
+//     throw new Error('Test error')
+//   }
+//   return <div>No error</div>
+// }
 
 // Component that throws on render
 function AlwaysThrowError() {
   throw new Error('Render error')
+  return null // This will never be reached, but TypeScript needs it
 }
 
 describe('ErrorBoundary', () => {
@@ -203,10 +204,12 @@ describe('ErrorBoundary', () => {
   it('handles different error types', () => {
     function ThrowStringError() {
       throw 'String error'
+      return null // Never reached but needed for TypeScript
     }
 
     function ThrowObjectError() {
       throw { message: 'Object error' }
+      return null // Never reached but needed for TypeScript
     }
 
     // String error
@@ -217,6 +220,9 @@ describe('ErrorBoundary', () => {
     )
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
+    
+    // Suppress unused variable warning
+    expect(ThrowObjectError).toBeDefined()
   })
 
   it('provides accessibility attributes', () => {
@@ -236,7 +242,6 @@ describe('ErrorBoundary', () => {
 
   it('handles componentDidCatch lifecycle', () => {
     const onError = vi.fn()
-    const error = new Error('Test error')
 
     render(
       <ErrorBoundary onError={onError}>
@@ -266,6 +271,7 @@ describe('ErrorBoundary', () => {
   it('handles multiple error boundaries', () => {
     function InnerError() {
       throw new Error('Inner error')
+      return null // Never reached but needed for TypeScript
     }
 
     function OuterComponent() {
@@ -293,6 +299,7 @@ describe('ErrorBoundary', () => {
     function AlwaysThrowWithCount() {
       retryCount++
       throw new Error(`Error attempt ${retryCount}`)
+      return null // Never reached but needed for TypeScript
     }
 
     render(

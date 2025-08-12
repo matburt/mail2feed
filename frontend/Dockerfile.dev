@@ -1,0 +1,19 @@
+# Development Dockerfile with hot reloading
+FROM node:18-alpine
+
+# Set working directory
+WORKDIR /app
+
+# Create app user
+RUN addgroup -g 1001 -S appuser && \
+    adduser -S -u 1001 -G appuser appuser && \
+    chown appuser:appuser /app
+
+# Switch to app user
+USER appuser
+
+# Expose port
+EXPOSE 3002
+
+# Default command for development (overridden by docker-compose)
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "3002"]

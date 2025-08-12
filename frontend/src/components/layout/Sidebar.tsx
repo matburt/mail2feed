@@ -62,7 +62,6 @@ export default function Sidebar() {
                     : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                 }`
               }
-              aria-current={({ isActive }) => isActive ? 'page' : undefined}
               role="listitem"
             >
               <span className="mr-3 flex-shrink-0" aria-hidden="true">{item.icon}</span>
