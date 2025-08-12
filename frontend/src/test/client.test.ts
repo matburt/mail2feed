@@ -84,7 +84,7 @@ describe('apiClient', () => {
         json: async () => mockResponse,
       })
 
-      const result = await apiClient.post('/test')
+      const result = await apiClient.post('/test', {})
 
       expect(mockFetch).toHaveBeenCalledWith(
         '/test',

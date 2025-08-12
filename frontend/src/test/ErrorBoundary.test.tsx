@@ -204,10 +204,12 @@ describe('ErrorBoundary', () => {
   it('handles different error types', () => {
     function ThrowStringError() {
       throw 'String error'
+      return null // Never reached but needed for TypeScript
     }
 
     function ThrowObjectError() {
       throw { message: 'Object error' }
+      return null // Never reached but needed for TypeScript
     }
 
     // String error
@@ -218,6 +220,9 @@ describe('ErrorBoundary', () => {
     )
 
     expect(screen.getByText('Something went wrong')).toBeInTheDocument()
+    
+    // Suppress unused variable warning
+    expect(ThrowObjectError).toBeDefined()
   })
 
   it('provides accessibility attributes', () => {
@@ -237,7 +242,6 @@ describe('ErrorBoundary', () => {
 
   it('handles componentDidCatch lifecycle', () => {
     const onError = vi.fn()
-    const error = new Error('Test error')
 
     render(
       <ErrorBoundary onError={onError}>
@@ -267,6 +271,7 @@ describe('ErrorBoundary', () => {
   it('handles multiple error boundaries', () => {
     function InnerError() {
       throw new Error('Inner error')
+      return null // Never reached but needed for TypeScript
     }
 
     function OuterComponent() {
@@ -294,6 +299,7 @@ describe('ErrorBoundary', () => {
     function AlwaysThrowWithCount() {
       retryCount++
       throw new Error(`Error attempt ${retryCount}`)
+      return null // Never reached but needed for TypeScript
     }
 
     render(

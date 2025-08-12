@@ -99,6 +99,7 @@ describe('feedsApi', () => {
       const mockCreatedFeed: Feed = {
         id: '1',
         ...createRequest,
+        feed_type: createRequest.feed_type as 'rss' | 'atom',
         created_at: '2023-01-01T00:00:00Z',
         updated_at: '2023-01-01T00:00:00Z',
       }
@@ -137,6 +138,7 @@ describe('feedsApi', () => {
       const mockUpdatedFeed: Feed = {
         id: '1',
         ...updateRequest,
+        feed_type: updateRequest.feed_type as 'rss' | 'atom',
         created_at: '2023-01-01T00:00:00Z',
         updated_at: '2023-01-01T01:00:00Z',
       }
@@ -200,7 +202,7 @@ describe('feedsApi', () => {
     })
 
     it('fetches feed items with limit', async () => {
-      const mockItems = []
+      const mockItems: any[] = []
       mockClient.get.mockResolvedValueOnce(mockItems)
 
       await feedsApi.getItems('1', 10)
