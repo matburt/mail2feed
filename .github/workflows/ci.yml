@@ -51,7 +51,7 @@ jobs:
       working-directory: backend
       run: |
         cargo fmt --check
-        cargo clippy -- -D warnings
+        cargo clippy -- -D warnings  
         cargo test
 
   test-frontend:

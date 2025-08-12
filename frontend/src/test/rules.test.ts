@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { rulesApi } from '../api/rules'
-import { ApiClient } from '../api/client'
+import { apiClient } from '../api/client'
 import type { EmailRule, CreateEmailRuleRequest, UpdateEmailRuleRequest } from '../types'
 
-// Mock the ApiClient
+// Mock the apiClient
 vi.mock('../api/client', () => ({
-  ApiClient: vi.fn().mockImplementation(() => ({
+  apiClient: {
     get: vi.fn(),
     post: vi.fn(),
     put: vi.fn(),
