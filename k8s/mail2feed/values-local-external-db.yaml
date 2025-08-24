@@ -1,0 +1,48 @@
+# Local External Database Configuration
+# Use this for connecting to your local PostgreSQL instance
+
+# Disable internal PostgreSQL
+postgresql:
+  enabled: false
+
+# Configure external database connection
+externalDatabase:
+  host: "host.docker.internal"  # For Docker Desktop
+  # OR host: "192.168.1.X"     # Replace with your actual local IP
+  port: 5432
+  database: mail2feed
+  username: mail2feed_user
+  password: "your_password"     # Replace with your actual password
+  sslmode: disable              # For local development
+  connectionParams: "connect_timeout=30"
+
+# Development configuration
+backend:
+  replicaCount: 1
+  env:
+    RUST_LOG: debug
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+frontend:
+  replicaCount: 1
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+# No pgAdmin needed since you have local PostgreSQL tools
+pgadmin:
+  enabled: false
+
+# No ingress needed for local development
+ingress:
+  enabled: false
