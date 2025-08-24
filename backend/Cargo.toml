@@ -10,7 +10,7 @@ postgres = []
 
 [dependencies]
 # Web framework
-axum = "0.6.20"
+axum = "0.8.4"
 tokio = { version = "1.35", features = ["full"] }
 tokio-util = { version = "0.7", features = ["compat"] }
 tower = "0.4"
