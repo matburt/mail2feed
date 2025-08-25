@@ -12,12 +12,12 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy manifests
-COPY Cargo.toml Cargo.lock ./
+COPY backend/Cargo.toml backend/Cargo.lock ./
 
 # Copy source code
-COPY src ./src
-COPY migrations ./migrations
-COPY diesel.toml ./
+COPY backend/src ./src
+COPY backend/migrations ./migrations
+COPY backend/diesel.toml ./
 
 # Build the application with PostgreSQL support
 RUN cargo build --release --features postgres

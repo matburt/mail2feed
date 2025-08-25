@@ -73,7 +73,7 @@ jobs:
       id: build-backend
       run: |
         for tag in $(echo "${{ steps.meta-backend.outputs.tags }}" | tr '\n' ' '); do
-          docker build -f backend/Dockerfile -t "$tag" backend/
+          docker build -f backend/Dockerfile -t "$tag" .
           docker push "$tag"
         done
 
@@ -81,7 +81,7 @@ jobs:
       id: build-frontend
       run: |
         for tag in $(echo "${{ steps.meta-frontend.outputs.tags }}" | tr '\n' ' '); do
-          docker build -f frontend/Dockerfile -t "$tag" frontend/
+          docker build -f frontend/Dockerfile -t "$tag" .
           docker push "$tag"
         done
 
