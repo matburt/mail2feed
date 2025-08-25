@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:1.78-slim-bullseye as builder
+FROM rust:1.82-slim-bullseye as builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -12,12 +12,12 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy manifests
-COPY backend/Cargo.toml backend/Cargo.lock ./
+COPY Cargo.toml Cargo.lock ./
 
 # Copy source code
-COPY backend/src ./src
-COPY backend/migrations ./migrations
-COPY backend/diesel.toml ./
+COPY src ./src
+COPY migrations ./migrations
+COPY diesel.toml ./
 
 # Build the application with PostgreSQL support
 RUN cargo build --release --features postgres
