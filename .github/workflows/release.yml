@@ -136,7 +136,7 @@ jobs:
     - name: Build Helm dependencies
       run: |
         cd k8s
-        helm dependency build mail2feed/
+        helm dependency update mail2feed/
 
     - name: Package Helm chart
       run: |
