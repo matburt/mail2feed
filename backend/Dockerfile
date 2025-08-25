@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     libpq-dev \
+    libsqlite3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Create app directory
@@ -29,6 +30,7 @@ FROM debian:bullseye-slim
 RUN apt-get update && apt-get install -y \
     libssl1.1 \
     libpq5 \
+    libsqlite3-0 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
