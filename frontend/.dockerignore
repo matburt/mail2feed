@@ -1,0 +1,17 @@
+node_modules
+.git
+.gitignore
+README.md
+.env
+.env.local
+.env.production.local
+.env.test.local
+coverage
+.nyc_output
+.cache
+dist
+src/test
+*.test.ts
+*.test.tsx
+jest.config.js
+.eslintcache
