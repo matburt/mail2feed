@@ -14,8 +14,9 @@ keywords:
   - atom
   - feed
   - email
-dependencies:
-  - name: postgresql
-    version: "15.0.0"
-    repository: https://charts.bitnami.com/bitnami
-    condition: postgresql.enabled
+# Dependencies removed - using external PostgreSQL
+# dependencies:
+#   - name: postgresql
+#     version: "15.0.0" 
+#     repository: https://charts.bitnami.com/bitnami
+#     condition: postgresql.enabled
