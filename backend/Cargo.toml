@@ -58,4 +58,4 @@ path = "src/bin/test_postgres.rs"
 tokio-test = "0.4"
 tower = { version = "0.4", features = ["util"] }
 hyper = { version = "0.14", features = ["full"] }
-tempfile = "3.0"
+tempfile = "3.21"
