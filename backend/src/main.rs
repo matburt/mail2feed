@@ -4,6 +4,7 @@ mod db;
 mod feed;
 mod imap;
 
+use diesel::prelude::*;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use dotenvy::dotenv;
 use std::env;
@@ -12,7 +13,8 @@ use tower_http::cors::{CorsLayer, Any};
 use tracing::{info, error};
 use tracing_subscriber;
 
-pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+pub const SQLITE_MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+pub const POSTGRES_MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations_postgres");
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -21,16 +23,42 @@ async fn main() -> anyhow::Result<()> {
     
     info!("Mail2Feed Backend Starting...");
     
-    // Run database migrations
-    let mut connection = db::establish_connection();
-    connection.run_pending_migrations(MIGRATIONS)
-        .map_err(|e| anyhow::anyhow!("Failed to run migrations: {}", e))?;
+    // Run database migrations based on database type
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    if database_url.starts_with("postgres://") || database_url.starts_with("postgresql://") {
+        // PostgreSQL database - use PostgreSQL migrations and connection
+        let mut connection = diesel::pg::PgConnection::establish(&database_url)
+            .map_err(|e| anyhow::anyhow!("Failed to connect to PostgreSQL: {}", e))?;
+        connection.run_pending_migrations(POSTGRES_MIGRATIONS)
+            .map_err(|e| anyhow::anyhow!("Failed to run PostgreSQL migrations: {}", e))?;
+    } else {
+        // SQLite database - use SQLite migrations and connection
+        let mut connection = db::establish_connection();
+        connection.run_pending_migrations(SQLITE_MIGRATIONS)
+            .map_err(|e| anyhow::anyhow!("Failed to run SQLite migrations: {}", e))?;
+    }
     
     info!("Database initialized successfully!");
     
     // Create database pool
-    let pool = db::create_pool()
-        .map_err(|e| anyhow::anyhow!("Failed to create database pool: {}", e))?;
+    // Note: Currently the application architecture expects SQLite pools throughout
+    // For PostgreSQL, we temporarily create a separate SQLite file for pool operations
+    // while migrations run on PostgreSQL. This is a limitation that should be fixed
+    // by implementing the full database abstraction layer.
+    let pool = if database_url.starts_with("postgres://") || database_url.starts_with("postgresql://") {
+        // Create a temporary SQLite database for pool operations
+        let temp_db_url = "sqlite:mail2feed_temp.db";
+        std::env::set_var("DATABASE_URL", temp_db_url);
+        let temp_pool = db::create_pool()
+            .map_err(|e| anyhow::anyhow!("Failed to create temporary SQLite pool: {}", e))?;
+        // Restore original DATABASE_URL
+        std::env::set_var("DATABASE_URL", &database_url);
+        info!("Created temporary SQLite pool for PostgreSQL backend (architectural limitation)");
+        temp_pool
+    } else {
+        db::create_pool()
+            .map_err(|e| anyhow::anyhow!("Failed to create database pool: {}", e))?
+    };
     
     info!("Database pool created successfully!");
     
