@@ -18,6 +18,7 @@ COPY backend/Cargo.toml backend/Cargo.lock ./
 # Copy source code
 COPY backend/src ./src
 COPY backend/migrations ./migrations
+COPY backend/migrations_postgres ./migrations_postgres
 COPY backend/diesel.toml ./
 
 # Build the application with PostgreSQL support
@@ -47,7 +48,8 @@ RUN chmod +x /app/mail2feed-backend && chown appuser:appuser /app/mail2feed-back
 
 # Copy migration files for potential runtime use
 COPY --from=builder /app/migrations /app/migrations
-RUN chown -R appuser:appuser /app/migrations
+COPY --from=builder /app/migrations_postgres /app/migrations_postgres
+RUN chown -R appuser:appuser /app/migrations /app/migrations_postgres
 
 # Switch to app user
 USER appuser
