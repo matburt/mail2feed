@@ -47,7 +47,7 @@ async fn main() -> anyhow::Result<()> {
     // by implementing the full database abstraction layer.
     let pool = if database_url.starts_with("postgres://") || database_url.starts_with("postgresql://") {
         // Create a temporary SQLite database for pool operations
-        let temp_db_url = "sqlite:mail2feed_temp.db";
+        let temp_db_url = "sqlite:/tmp/mail2feed_temp.db";
         std::env::set_var("DATABASE_URL", temp_db_url);
         let temp_pool = db::create_pool()
             .map_err(|e| anyhow::anyhow!("Failed to create temporary SQLite pool: {}", e))?;
