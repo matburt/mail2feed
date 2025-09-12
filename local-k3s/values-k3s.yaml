@@ -1,0 +1,111 @@
+## Local k3s deployment values (personal)
+## Uses external PostgreSQL and GHCR images
+
+backend:
+  image:
+    repository: ghcr.io/matburt/mail2feed/backend
+    tag: "1.1.5"
+    pullPolicy: Always
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 3001
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  env:
+    RUST_LOG: debug
+    RUST_BACKTRACE: "1"
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 3001
+    initialDelaySeconds: 30
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 3001
+    initialDelaySeconds: 10
+    periodSeconds: 5
+
+frontend:
+  image:
+    repository: ghcr.io/matburt/mail2feed/frontend
+    tag: "1.1.5"
+    pullPolicy: Always
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 3002
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  env:
+    VITE_API_URL: http://mail2feed-backend:3001
+
+# Disable internal PostgreSQL since we're using external
+postgresql:
+  enabled: false
+
+# External database configuration
+# Use an existing Secret for credentials + connection string
+externalDatabase:
+  host: "10.0.0.4"
+  port: 5433
+  database: mailfeed
+  username: postgres
+  sslmode: disable
+  existingSecret: "mail2feed-external-db"
+  existingSecretPasswordKey: "password"
+
+# Disable pgAdmin
+pgadmin:
+  enabled: false
+
+# Ingress for local k3s (Traefik)
+ingress:
+  enabled: true
+  className: "traefik"
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
+    ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/24"
+    traefik.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/24"
+  hosts:
+    - host: mail2feed.joneses.is
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - mail2feed.joneses.is
+      secretName: mail2feed-joneses
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podSecurityContext:
+  fsGroup: 2000
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+

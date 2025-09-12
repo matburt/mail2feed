@@ -1,5 +1,6 @@
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
+use diesel::Connection;
 use dotenvy::dotenv;
 use std::env;
 use anyhow::Result;
@@ -10,6 +11,7 @@ pub enum DatabaseType {
     PostgreSQL,
 }
 
+#[derive(Clone)]
 pub enum DatabasePool {
     SQLite(Pool<ConnectionManager<diesel::sqlite::SqliteConnection>>),
     #[cfg(feature = "postgres")]
@@ -93,4 +95,57 @@ pub fn create_sqlite_pool() -> Result<DbPool> {
         .map_err(|e| anyhow::anyhow!("Failed to create database pool: {}", e))?;
     
     Ok(pool)
+}
+
+// Connection type alias for compatibility with existing code
+pub type SqliteConnection = diesel::r2d2::PooledConnection<diesel::r2d2::ConnectionManager<diesel::sqlite::SqliteConnection>>;
+
+#[cfg(feature = "postgres")]
+pub type PostgresConnection = diesel::r2d2::PooledConnection<diesel::r2d2::ConnectionManager<diesel::pg::PgConnection>>;
+
+// Connection enum for generic handling
+pub enum DatabaseConnection {
+    SQLite(SqliteConnection),
+    #[cfg(feature = "postgres")]
+    PostgreSQL(PostgresConnection),
+}
+
+// Helper methods for DatabasePool compatibility
+impl DatabasePool {
+    /// Get a connection from the pool - returns appropriate connection type
+    /// This provides compatibility with existing `.get()` calls
+    pub fn get(&self) -> Result<DatabaseConnection> {
+        match self {
+            DatabasePool::SQLite(pool) => {
+                Ok(DatabaseConnection::SQLite(pool.get()?))
+            }
+            #[cfg(feature = "postgres")]
+            DatabasePool::PostgreSQL(pool) => {
+                Ok(DatabaseConnection::PostgreSQL(pool.get()?))
+            }
+        }
+    }
+
+    /// Convert to legacy DbPool for compatibility with existing API routes
+    /// This returns SQLite pool if available, otherwise creates a temporary in-memory SQLite pool
+    /// TODO: This is a temporary compatibility layer - should be removed once all routes use generic operations
+    pub fn to_legacy_pool(&self) -> Result<DbPool> {
+        match self {
+            DatabasePool::SQLite(pool) => {
+                Ok(pool.clone())
+            }
+            #[cfg(feature = "postgres")]
+            DatabasePool::PostgreSQL(_) => {
+                // For PostgreSQL deployments, create a temporary in-memory SQLite pool
+                // This allows the API routes to start but operations will fail gracefully
+                // TODO: Update API routes to use generic operations to remove this hack
+                let temp_url = "sqlite::memory:";
+                let manager = diesel::r2d2::ConnectionManager::<diesel::sqlite::SqliteConnection>::new(temp_url);
+                let pool = diesel::r2d2::Pool::builder()
+                    .build(manager)
+                    .map_err(|e| anyhow::anyhow!("Failed to create temporary compatibility pool: {}", e))?;
+                Ok(pool)
+            }
+        }
+    }
 }
