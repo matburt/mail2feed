@@ -3,7 +3,7 @@
 //! Manages the scheduling and execution of background email processing tasks
 
 use crate::background::{config::BackgroundConfig, cleanup::FeedCleanupService};
-use crate::db::{models::ImapAccount, operations, DbPool};
+use crate::db::{models::ImapAccount, connection::DatabasePool, operations_generic::ImapAccountOpsGeneric};
 use crate::imap::processor::EmailProcessor;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -38,7 +38,7 @@ pub struct AccountState {
 /// Email processing scheduler
 #[derive(Clone)]
 pub struct EmailScheduler {
-    pool: DbPool,
+    pool: DatabasePool,
     config: BackgroundConfig,
     account_states: Arc<RwLock<HashMap<String, AccountState>>>,
     cancellation_token: CancellationToken,
@@ -48,7 +48,7 @@ pub struct EmailScheduler {
 
 impl EmailScheduler {
     /// Create a new email scheduler
-    pub fn new(pool: DbPool, config: BackgroundConfig) -> anyhow::Result<Self> {
+    pub fn new(pool: DatabasePool, config: BackgroundConfig) -> anyhow::Result<Self> {
         config.validate()?;
         
         let processing_semaphore = Arc::new(tokio::sync::Semaphore::new(config.max_concurrent_accounts));
@@ -408,19 +408,13 @@ impl EmailScheduler {
     
     /// Get all active IMAP accounts
     async fn get_active_accounts(&self) -> anyhow::Result<Vec<ImapAccount>> {
-        let mut conn = self.pool.get()
-            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
-        
-        operations::ImapAccountOps::get_all(&mut conn)
+        ImapAccountOpsGeneric::get_all(&self.pool)
             .map_err(|e| anyhow::anyhow!("Failed to fetch accounts: {}", e))
     }
     
     /// Get account by ID
     async fn get_account_by_id(&self, account_id: &str) -> anyhow::Result<ImapAccount> {
-        let mut conn = self.pool.get()
-            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
-        
-        operations::ImapAccountOps::get_by_id(&mut conn, account_id)
+        ImapAccountOpsGeneric::get_by_id(&self.pool, account_id)
             .map_err(|e| anyhow::anyhow!("Failed to fetch account: {}", e))
     }
     

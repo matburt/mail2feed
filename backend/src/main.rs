@@ -42,19 +42,14 @@ async fn main() -> anyhow::Result<()> {
     info!("Database initialized successfully!");
     
     // Create database pool using proper abstraction layer
-    let generic_pool = create_generic_pool()
+    let pool = create_generic_pool()
         .map_err(|e| anyhow::anyhow!("Failed to create database pool: {}", e))?;
-    
-    // For compatibility with existing API routes, convert to legacy pool format
-    // TODO: This should be removed once all routes use generic database operations
-    let legacy_pool = generic_pool.to_legacy_pool()
-        .map_err(|e| anyhow::anyhow!("Failed to create legacy pool adapter: {}", e))?;
     
     info!("Database pool created successfully!");
     
     // Initialize and start background service
     let background_config = background::BackgroundConfig::from_env();
-    let background_handle = background::initialize_background_service(legacy_pool.clone(), background_config).await?;
+    let background_handle = background::initialize_background_service(pool.clone(), background_config).await?;
     
     // Start background service automatically if enabled
     if let Err(e) = background::start_background_service(&background_handle).await {
@@ -86,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
     };
     
     // Build the application routes
-    let app = api::create_routes(legacy_pool, background_handle.clone())
+    let app = api::create_routes(pool, background_handle.clone())
         .layer(cors.allow_headers(Any).allow_methods(Any));
     
     // Start the server

@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use crate::api::AppState;
-use crate::db::{operations::ImapAccountOps, models::NewImapAccount};
+use crate::db::{operations_generic::ImapAccountOpsGeneric, models::NewImapAccount};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateImapAccountRequest {
@@ -50,13 +50,7 @@ pub fn routes() -> Router<AppState> {
 }
 
 async fn list_accounts(State(state): State<AppState>) -> Response {
-    let mut conn = match state.pool.get() {
-        Ok(conn) => conn,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, 
-            Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
-    };
-
-    match ImapAccountOps::get_all(&mut conn) {
+    match ImapAccountOpsGeneric::get_all(&state.pool) {
         Ok(accounts) => Json(accounts).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Failed to fetch accounts: {}", e) })).into_response(),
@@ -67,12 +61,6 @@ async fn create_account(
     State(state): State<AppState>,
     Json(req): Json<CreateImapAccountRequest>
 ) -> Response {
-    let mut conn = match state.pool.get() {
-        Ok(conn) => conn,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
-    };
-
     let new_account = NewImapAccount::with_defaults(
         req.name,
         req.host,
@@ -84,7 +72,7 @@ async fn create_account(
         req.default_move_to_folder,
     );
 
-    match ImapAccountOps::create(&mut conn, &new_account) {
+    match ImapAccountOpsGeneric::create(&state.pool, &new_account) {
         Ok(account) => (StatusCode::CREATED, Json(account)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Failed to create account: {}", e) })).into_response(),
@@ -95,13 +83,7 @@ async fn get_account(
     State(state): State<AppState>,
     Path(id): Path<String>
 ) -> Response {
-    let mut conn = match state.pool.get() {
-        Ok(conn) => conn,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
-    };
-
-    match ImapAccountOps::get_by_id(&mut conn, &id) {
+    match ImapAccountOpsGeneric::get_by_id(&state.pool, &id) {
         Ok(account) => Json(account).into_response(),
         Err(e) => (StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("Account not found: {}", e) })).into_response(),
@@ -130,7 +112,7 @@ async fn update_account(
         req.default_move_to_folder,
     );
 
-    match ImapAccountOps::update(&mut conn, &id, &updated_account) {
+    match ImapAccountOps::update(&state.pool, &id, &updated_account) {
         Ok(account) => Json(account).into_response(),
         Err(e) => (StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("Failed to update account: {}", e) })).into_response(),
@@ -141,13 +123,7 @@ async fn delete_account(
     State(state): State<AppState>,
     Path(id): Path<String>
 ) -> Response {
-    let mut conn = match state.pool.get() {
-        Ok(conn) => conn,
-        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
-    };
-
-    match ImapAccountOps::delete(&mut conn, &id) {
+    match ImapAccountOpsGeneric::delete(&state.pool, &id) {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("Failed to delete account: {}", e) })).into_response(),

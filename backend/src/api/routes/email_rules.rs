@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use crate::api::AppState;
-use crate::db::{operations::{EmailRuleOps, ImapAccountOps}, models::NewEmailRule};
+use crate::db::{operations_generic::{EmailRuleOpsGeneric, ImapAccountOpsGeneric}, models::NewEmailRule};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateEmailRuleRequest {
@@ -58,7 +58,7 @@ async fn list_rules(State(state): State<AppState>) -> Response {
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    match EmailRuleOps::get_all(&mut conn) {
+    match EmailRuleOpsGeneric::get_all(&mut conn) {
         Ok(rules) => Json(rules).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Failed to fetch rules: {}", e) })).into_response(),
@@ -77,7 +77,7 @@ async fn create_rule(
 
     let new_rule = if req.inherit_account_defaults {
         // Get the account to inherit defaults
-        match ImapAccountOps::get_by_id(&mut conn, &req.imap_account_id) {
+        match ImapAccountOpsGeneric::get_by_id(&state.pool, &req.imap_account_id) {
             Ok(account) => {
                 NewEmailRule::from_account_defaults(
                     req.name,
@@ -109,7 +109,7 @@ async fn create_rule(
         )
     };
 
-    match EmailRuleOps::create(&mut conn, &new_rule) {
+    match EmailRuleOpsGeneric::create(&state.pool, &new_rule) {
         Ok(rule) => (StatusCode::CREATED, Json(rule)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Failed to create rule: {}", e) })).into_response(),
@@ -126,7 +126,7 @@ async fn get_rule(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    match EmailRuleOps::get_by_id(&mut conn, &id) {
+    match EmailRuleOpsGeneric::get_by_id(&state.pool, &id) {
         Ok(rule) => Json(rule).into_response(),
         Err(e) => (StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("Rule not found: {}", e) })).into_response(),
@@ -146,7 +146,7 @@ async fn update_rule(
 
     let updated_rule = if req.inherit_account_defaults {
         // Get the account to inherit defaults
-        match ImapAccountOps::get_by_id(&mut conn, &req.imap_account_id) {
+        match ImapAccountOpsGeneric::get_by_id(&state.pool, &req.imap_account_id) {
             Ok(account) => {
                 NewEmailRule::from_account_defaults(
                     req.name,
@@ -178,7 +178,7 @@ async fn update_rule(
         )
     };
 
-    match EmailRuleOps::update(&mut conn, &id, &updated_rule) {
+    match EmailRuleOpsGeneric::update(&state.pool, &id, &updated_rule) {
         Ok(rule) => Json(rule).into_response(),
         Err(e) => (StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("Failed to update rule: {}", e) })).into_response(),
@@ -195,7 +195,7 @@ async fn delete_rule(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    match EmailRuleOps::delete(&mut conn, &id) {
+    match EmailRuleOpsGeneric::delete(&state.pool, &id) {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("Failed to delete rule: {}", e) })).into_response(),

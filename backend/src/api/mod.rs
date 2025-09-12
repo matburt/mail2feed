@@ -1,15 +1,15 @@
 pub mod routes;
 
 use axum::Router;
-use crate::{background::BackgroundServiceHandle, db::DbPool};
+use crate::{background::BackgroundServiceHandle, db::connection::DatabasePool};
 
 #[derive(Clone)]
 pub struct AppState {
-    pub pool: DbPool,
+    pub pool: DatabasePool,
     pub background: BackgroundServiceHandle,
 }
 
-pub fn create_routes(pool: DbPool, background_handle: BackgroundServiceHandle) -> Router {
+pub fn create_routes(pool: DatabasePool, background_handle: BackgroundServiceHandle) -> Router {
     let state = AppState {
         pool,
         background: background_handle,

@@ -6,7 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use crate::api::AppState;
-use crate::db::{operations::{FeedOps, FeedItemOps}, models::NewFeed};
+use crate::db::{operations_generic::{FeedOpsGeneric, FeedItemOpsGeneric}, models::NewFeed};
 use crate::feed::generator::FeedGenerator;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -81,7 +81,7 @@ async fn list_feeds(State(state): State<AppState>) -> Response {
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    match FeedOps::get_all(&mut conn) {
+    match FeedOpsGeneric::get_all(&mut conn) {
         Ok(feeds) => Json(feeds).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Failed to fetch feeds: {}", e) })).into_response(),
@@ -110,7 +110,7 @@ async fn create_feed(
         req.min_items,
     );
 
-    match FeedOps::create(&mut conn, &new_feed) {
+    match FeedOpsGeneric::create(&state.pool, &new_feed) {
         Ok(feed) => (StatusCode::CREATED, Json(feed)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Failed to create feed: {}", e) })).into_response(),
@@ -127,7 +127,7 @@ async fn get_feed(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    match FeedOps::get_by_id(&mut conn, &id) {
+    match FeedOpsGeneric::get_by_id(&state.pool, &id) {
         Ok(feed) => Json(feed).into_response(),
         Err(e) => (StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("Feed not found: {}", e) })).into_response(),
@@ -157,7 +157,7 @@ async fn update_feed(
         req.min_items,
     );
 
-    match FeedOps::update(&mut conn, &id, &updated_feed) {
+    match FeedOpsGeneric::update(&state.pool, &id, &updated_feed) {
         Ok(feed) => Json(feed).into_response(),
         Err(e) => (StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("Failed to update feed: {}", e) })).into_response(),
@@ -174,7 +174,7 @@ async fn delete_feed(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    match FeedOps::delete(&mut conn, &id) {
+    match FeedOpsGeneric::delete(&state.pool, &id) {
         Ok(_) => StatusCode::NO_CONTENT.into_response(),
         Err(e) => (StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("Failed to delete feed: {}", e) })).into_response(),
@@ -192,7 +192,7 @@ async fn get_feed_items(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
 
-    match FeedItemOps::get_by_feed_id(&mut conn, &id, params.limit) {
+    match FeedItemOpsGeneric::get_by_feed_id(&state.pool, &id, params.limit) {
         Ok(items) => Json(items).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Failed to fetch feed items: {}", e) })).into_response(),
@@ -208,7 +208,7 @@ async fn get_feed_data(state: &AppState, id: &str) -> Result<(crate::db::models:
     };
 
     // Get the feed metadata
-    let feed = match FeedOps::get_by_id(&mut conn, id) {
+    let feed = match FeedOpsGeneric::get_by_id(&state.pool, id) {
         Ok(feed) => feed,
         Err(e) => {
             // Check if it's a not found error by checking the error message
@@ -228,7 +228,7 @@ async fn get_feed_data(state: &AppState, id: &str) -> Result<(crate::db::models:
         .unwrap_or_else(|_| "50".to_string())
         .parse::<i64>()
         .unwrap_or(50);
-    let items = match FeedItemOps::get_by_feed_id(&mut conn, id, Some(item_limit)) {
+    let items = match FeedItemOpsGeneric::get_by_feed_id(&state.pool, id, Some(item_limit)) {
         Ok(items) => items,
         Err(e) => return Err((StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Failed to fetch feed items: {}", e) })).into_response()),
@@ -301,7 +301,7 @@ async fn get_feed_items_metadata(
             Json(ErrorResponse { error: format!("Database connection error: {}", e) })).into_response(),
     };
     
-    match FeedItemOps::get_by_feed_id(&mut conn, &id, params.limit) {
+    match FeedItemOpsGeneric::get_by_feed_id(&state.pool, &id, params.limit) {
         Ok(items) => {
             let metadata: Vec<FeedItemMetadata> = items.into_iter().map(|item| {
                 FeedItemMetadata {
@@ -335,7 +335,7 @@ async fn update_feed_item(
     };
     
     // Get the existing item
-    let mut item = match FeedItemOps::get_by_id(&mut conn, &id) {
+    let mut item = match FeedItemOpsGeneric::get_by_id(&state.pool, &id) {
         Ok(item) => item,
         Err(e) => return (StatusCode::NOT_FOUND,
             Json(ErrorResponse { error: format!("Feed item not found: {}", e) })).into_response(),
@@ -350,7 +350,7 @@ async fn update_feed_item(
     }
     
     // Save the updated item (this requires implementing an update method)
-    match update_feed_item_metadata(&mut conn, &item) {
+    match update_feed_item_metadata(&state.pool, &item) {
         Ok(_) => (StatusCode::OK, Json(item)).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse { error: format!("Failed to update feed item: {}", e) })).into_response(),

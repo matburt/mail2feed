@@ -3,7 +3,7 @@
 //! Provides the main service interface for managing background email processing
 
 use crate::background::{config::BackgroundConfig, scheduler::EmailScheduler, control::{ControlMessage, ServiceStatusResponse}};
-use crate::db::DbPool;
+use crate::db::connection::DatabasePool;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
@@ -59,7 +59,7 @@ pub struct BackgroundService {
 
 impl BackgroundService {
     /// Create a new background service
-    pub fn new(pool: DbPool, config: BackgroundConfig, control_rx: mpsc::UnboundedReceiver<ControlMessage>) -> anyhow::Result<Self> {
+    pub fn new(pool: DatabasePool, config: BackgroundConfig, control_rx: mpsc::UnboundedReceiver<ControlMessage>) -> anyhow::Result<Self> {
         info!("Creating background service with config: {:?}", config);
         
         // Validate configuration

@@ -27,7 +27,7 @@ pub struct BackgroundServiceHandle {
 
 /// Initialize the background service system
 pub async fn initialize_background_service(
-    pool: crate::db::DbPool,
+    pool: crate::db::connection::DatabasePool,
     config: BackgroundConfig,
 ) -> anyhow::Result<BackgroundServiceHandle> {
     info!("Initializing background email processing service...");

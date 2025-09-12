@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, error};
 
 use crate::api::AppState;
-use crate::db::operations::ImapAccountOps;
+use crate::db::operations_generic::ImapAccountOpsGeneric;
 use crate::imap::{ImapClient, EmailProcessor};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -40,7 +40,7 @@ pub async fn test_connection(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
     // Get the account
-    let account = ImapAccountOps::get_by_id(&mut conn, &account_id)
+    let account = ImapAccountOpsGeneric::get_by_id(&state.pool, &account_id)
         .map_err(|e| (StatusCode::NOT_FOUND, format!("Account not found: {}", e)))?;
     
     // Test connection
@@ -124,7 +124,7 @@ pub async fn process_account(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
     // Get the account
-    let account = ImapAccountOps::get_by_id(&mut conn, &account_id)
+    let account = ImapAccountOpsGeneric::get_by_id(&state.pool, &account_id)
         .map_err(|e| (StatusCode::NOT_FOUND, format!("Account not found: {}", e)))?;
     
     // Drop the connection before creating processor
@@ -169,7 +169,7 @@ pub async fn process_all_accounts(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", e)))?;
     
     // Get all accounts
-    let accounts = ImapAccountOps::get_all(&mut conn)
+    let accounts = ImapAccountOpsGeneric::get_all(&mut conn)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to get accounts: {}", e)))?;
     
     drop(conn);

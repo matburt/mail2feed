@@ -126,26 +126,29 @@ impl DatabasePool {
         }
     }
 
-    /// Convert to legacy DbPool for compatibility with existing API routes
-    /// This returns SQLite pool if available, otherwise creates a temporary in-memory SQLite pool
-    /// TODO: This is a temporary compatibility layer - should be removed once all routes use generic operations
-    pub fn to_legacy_pool(&self) -> Result<DbPool> {
+    /// Get the database type for this pool
+    pub fn database_type(&self) -> DatabaseType {
         match self {
-            DatabasePool::SQLite(pool) => {
-                Ok(pool.clone())
-            }
+            DatabasePool::SQLite(_) => DatabaseType::SQLite,
             #[cfg(feature = "postgres")]
-            DatabasePool::PostgreSQL(_) => {
-                // For PostgreSQL deployments, create a temporary in-memory SQLite pool
-                // This allows the API routes to start but operations will fail gracefully
-                // TODO: Update API routes to use generic operations to remove this hack
-                let temp_url = "sqlite::memory:";
-                let manager = diesel::r2d2::ConnectionManager::<diesel::sqlite::SqliteConnection>::new(temp_url);
-                let pool = diesel::r2d2::Pool::builder()
-                    .build(manager)
-                    .map_err(|e| anyhow::anyhow!("Failed to create temporary compatibility pool: {}", e))?;
-                Ok(pool)
-            }
+            DatabasePool::PostgreSQL(_) => DatabaseType::PostgreSQL,
+        }
+    }
+    
+    /// Get SQLite pool (only if this is a SQLite database)
+    pub fn as_sqlite_pool(&self) -> Result<&Pool<ConnectionManager<diesel::sqlite::SqliteConnection>>> {
+        match self {
+            DatabasePool::SQLite(pool) => Ok(pool),
+            _ => Err(anyhow::anyhow!("Expected SQLite database but found PostgreSQL"))
+        }
+    }
+    
+    /// Get PostgreSQL pool (only if this is a PostgreSQL database)
+    #[cfg(feature = "postgres")]
+    pub fn as_postgres_pool(&self) -> Result<&Pool<ConnectionManager<diesel::pg::PgConnection>>> {
+        match self {
+            DatabasePool::PostgreSQL(pool) => Ok(pool),
+            _ => Err(anyhow::anyhow!("Expected PostgreSQL database but found SQLite"))
         }
     }
 }

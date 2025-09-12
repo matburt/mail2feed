@@ -1,16 +1,14 @@
 use anyhow::Result;
-use crate::db::operations;
-use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::SqliteConnection;
+use crate::db::{connection::DatabasePool, operations_generic::{FeedOpsGeneric, FeedItemOpsGeneric}};
 use tracing::{info, warn, debug};
 use chrono::{Utc, Duration};
 
 pub struct FeedCleanupService {
-    pool: Pool<ConnectionManager<SqliteConnection>>,
+    pool: DatabasePool,
 }
 
 impl FeedCleanupService {
-    pub fn new(pool: Pool<ConnectionManager<SqliteConnection>>) -> Self {
+    pub fn new(pool: DatabasePool) -> Self {
         Self { pool }
     }
     
@@ -18,9 +16,7 @@ impl FeedCleanupService {
     pub async fn cleanup_all_feeds(&self) -> Result<CleanupResult> {
         info!("Starting feed cleanup process");
         
-        let mut conn = self.pool.get()
-            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
-        let feeds = operations::FeedOps::get_all(&mut conn)?;
+        let feeds = FeedOpsGeneric::get_all(&self.pool)?;
         let mut total_result = CleanupResult::default();
         
         for feed in feeds {
@@ -54,9 +50,7 @@ impl FeedCleanupService {
         debug!("Cleaning up feed '{}' ({})", feed.title, feed_id);
         
         // Get all feed items for this feed, ordered by creation date (newest first)
-        let mut conn = self.pool.get()
-            .map_err(|e| anyhow::anyhow!("Failed to get database connection: {}", e))?;
-        let all_items = operations::FeedItemOps::get_by_feed_id(&mut conn, feed_id, None)?;
+        let all_items = FeedItemOpsGeneric::get_by_feed_id(&self.pool, feed_id, None)?;
         
         if all_items.is_empty() {
             debug!("No items to clean up in feed '{}'", feed.title);
@@ -126,7 +120,7 @@ impl FeedCleanupService {
         // Actually remove the items
         let mut removed_count = 0;
         for item_id in items_to_remove {
-            match operations::FeedItemOps::delete(&mut conn, &item_id) {
+            match FeedItemOpsGeneric::delete(&self.pool, &item_id) {
                 Ok(_) => {
                     removed_count += 1;
                     debug!("Removed feed item: {}", item_id);

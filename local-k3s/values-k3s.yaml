@@ -4,7 +4,7 @@
 backend:
   image:
     repository: ghcr.io/matburt/mail2feed/backend
-    tag: "1.1.5"
+    tag: "1.1.6"
     pullPolicy: Always
   replicaCount: 1
   service:
@@ -36,7 +36,7 @@ backend:
 frontend:
   image:
     repository: ghcr.io/matburt/mail2feed/frontend
-    tag: "1.1.5"
+    tag: "1.1.6"
     pullPolicy: Always
   replicaCount: 1
   service:
@@ -103,7 +103,7 @@ securityContext:
     - ALL
   readOnlyRootFilesystem: false
   runAsNonRoot: true
-  runAsUser: 1000
+  runAsUser: 1001
 
 nodeSelector: {}
 tolerations: []

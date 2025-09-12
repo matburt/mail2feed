@@ -1,18 +1,16 @@
 use anyhow::{Result, Context};
 use crate::db::models::{EmailRule, ImapAccount, NewFeedItem, EmailAction};
-use crate::db::operations;
+use crate::db::{connection::DatabasePool, operations_generic::{EmailRuleOpsGeneric, FeedOpsGeneric, FeedItemOpsGeneric}};
 use super::client::{ImapClient, Email};
-use diesel::r2d2::{ConnectionManager, Pool};
-use diesel::SqliteConnection;
 use tracing::{info, warn, error, debug};
 
 pub struct EmailProcessor {
     account: ImapAccount,
-    pool: Pool<ConnectionManager<SqliteConnection>>,
+    pool: DatabasePool,
 }
 
 impl EmailProcessor {
-    pub fn new(account: ImapAccount, pool: Pool<ConnectionManager<SqliteConnection>>) -> Self {
+    pub fn new(account: ImapAccount, pool: DatabasePool) -> Self {
         Self { account, pool }
     }
     
@@ -24,7 +22,7 @@ impl EmailProcessor {
             .ok_or_else(|| anyhow::anyhow!("Account has no ID"))?;
         
         // Get email rules for this account
-        let rules = operations::get_email_rules_by_account(&self.pool, account_id)?;
+        let rules = EmailRuleOpsGeneric::get_by_account_id(&self.pool, account_id)?
         
         if rules.is_empty() {
             info!("No active rules for account: {}", self.account.name);
@@ -65,7 +63,7 @@ impl EmailProcessor {
         // Get the feed associated with this rule
         let rule_id = rule.id.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Rule has no ID"))?;
-        let feeds = operations::get_feeds_by_rule(&self.pool, rule_id)?;
+        let feeds = FeedOpsGeneric::get_by_rule_id(&self.pool, rule_id)?
         if feeds.is_empty() {
             warn!("No feed configured for rule: {}", rule.name);
             return Ok(RuleProcessingResult {
@@ -188,41 +186,80 @@ impl EmailProcessor {
     }
     
     fn email_exists_in_feed(&self, email: &Email, feed_id_val: &str) -> Result<bool> {
-        let conn = &mut self.pool.get()?;
-        
         use crate::db::schema::feed_items::dsl::*;
         use diesel::prelude::*;
         
-        // Priority 1: Use message ID if available and not empty
-        if !email.message_id.is_empty() {
-            debug!("Checking duplicate by message ID: '{}'", email.message_id);
-            let count = feed_items
-                .filter(feed_id.eq(feed_id_val))
-                .filter(email_message_id.eq(&email.message_id))
-                .count()
-                .get_result::<i64>(conn)?;
-            
-            if count > 0 {
-                debug!("Found duplicate by message ID '{}': {} existing items", email.message_id, count);
-                return Ok(true);
+        match &self.pool {
+            crate::db::connection::DatabasePool::SQLite(sqlite_pool) => {
+                let mut conn = sqlite_pool.get()?;
+                
+                // Priority 1: Use message ID if available and not empty
+                if !email.message_id.is_empty() {
+                    debug!("Checking duplicate by message ID: '{}'", email.message_id);
+                    let count = feed_items
+                        .filter(feed_id.eq(feed_id_val))
+                        .filter(email_message_id.eq(&email.message_id))
+                        .count()
+                        .get_result::<i64>(&mut conn)?;
+                    
+                    if count > 0 {
+                        debug!("Found duplicate by message ID '{}': {} existing items", email.message_id, count);
+                        return Ok(true);
+                    }
+                }
+                
+                // Priority 2: Fall back to subject + from + date combination for more robust duplicate detection
+                debug!("Checking duplicate by subject+from combination: '{}' from '{}'", email.subject, email.from);
+                let email_date_str = email.date.to_rfc3339();
+                debug!("Comparing with email date: {}", email_date_str);
+                let count = feed_items
+                    .filter(feed_id.eq(feed_id_val))
+                    .filter(title.eq(&email.subject))
+                    .filter(email_from.eq(&email.from))
+                    .filter(pub_date.eq(email_date_str))
+                    .count()
+                    .get_result::<i64>(&mut conn)?;
+                    
+                debug!("Duplicate check for '{}' from '{}': found {} existing items", 
+                       email.subject, email.from, count);
+                Ok(count > 0)
+            }
+            #[cfg(feature = "postgres")]
+            crate::db::connection::DatabasePool::PostgreSQL(pg_pool) => {
+                let mut conn = pg_pool.get()?;
+                
+                // Priority 1: Use message ID if available and not empty
+                if !email.message_id.is_empty() {
+                    debug!("Checking duplicate by message ID: '{}'", email.message_id);
+                    let count = feed_items
+                        .filter(feed_id.eq(feed_id_val))
+                        .filter(email_message_id.eq(&email.message_id))
+                        .count()
+                        .get_result::<i64>(&mut conn)?;
+                    
+                    if count > 0 {
+                        debug!("Found duplicate by message ID '{}': {} existing items", email.message_id, count);
+                        return Ok(true);
+                    }
+                }
+                
+                // Priority 2: Fall back to subject + from + date combination for more robust duplicate detection
+                debug!("Checking duplicate by subject+from combination: '{}' from '{}'", email.subject, email.from);
+                let email_date_str = email.date.to_rfc3339();
+                debug!("Comparing with email date: {}", email_date_str);
+                let count = feed_items
+                    .filter(feed_id.eq(feed_id_val))
+                    .filter(title.eq(&email.subject))
+                    .filter(email_from.eq(&email.from))
+                    .filter(pub_date.eq(email_date_str))
+                    .count()
+                    .get_result::<i64>(&mut conn)?;
+                    
+                debug!("Duplicate check for '{}' from '{}': found {} existing items", 
+                       email.subject, email.from, count);
+                Ok(count > 0)
             }
         }
-        
-        // Priority 2: Fall back to subject + from + date combination for more robust duplicate detection
-        debug!("Checking duplicate by subject+from combination: '{}' from '{}'", email.subject, email.from);
-        let email_date_str = email.date.to_rfc3339();
-        debug!("Comparing with email date: {}", email_date_str);
-        let count = feed_items
-            .filter(feed_id.eq(feed_id_val))
-            .filter(title.eq(&email.subject))
-            .filter(email_from.eq(&email.from))
-            .filter(pub_date.eq(email_date_str))
-            .count()
-            .get_result::<i64>(conn)?;
-            
-        debug!("Duplicate check for '{}' from '{}': found {} existing items", 
-               email.subject, email.from, count);
-        Ok(count > 0)
     }
     
     fn create_feed_item(&self, email: &Email, feed_id_val: &str) -> Result<String> {
@@ -239,7 +276,7 @@ impl EmailProcessor {
             Some(email.body.clone()),
         );
         
-        operations::create_feed_item(&self.pool, new_item)
+        FeedItemOpsGeneric::create(&self.pool, &new_item).map(|item| item.id)
     }
     
     fn truncate_body(&self, body: &str, max_length: usize) -> String {
