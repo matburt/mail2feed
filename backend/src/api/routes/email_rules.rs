@@ -52,7 +52,10 @@ pub struct ErrorResponse {
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/api/email-rules", get(list_rules).post(create_rule))
-        .route("/api/email-rules/:id", get(get_rule).put(update_rule).delete(delete_rule))
+        .route(
+            "/api/email-rules/:id",
+            get(get_rule).put(update_rule).delete(delete_rule),
+        )
 }
 
 async fn list_rules(State(state): State<AppState>) -> Response {
@@ -71,7 +74,7 @@ async fn list_rules(State(state): State<AppState>) -> Response {
 
 async fn create_rule(
     State(state): State<AppState>,
-    Json(req): Json<CreateEmailRuleRequest>
+    Json(req): Json<CreateEmailRuleRequest>,
 ) -> Response {
     let mut conn = match state.pool.get() {
         Ok(conn) => conn,
@@ -122,7 +125,7 @@ async fn create_rule(
 
 async fn get_rule(
     State(state): State<AppState>,
-    Path(id): Path<String>
+    Path(id): Path<String>,
 ) -> Response {
     let mut conn = match state.pool.get() {
         Ok(conn) => conn,
@@ -140,7 +143,7 @@ async fn get_rule(
 async fn update_rule(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    Json(req): Json<UpdateEmailRuleRequest>
+    Json(req): Json<UpdateEmailRuleRequest>,
 ) -> Response {
     let mut conn = match state.pool.get() {
         Ok(conn) => conn,
@@ -191,7 +194,7 @@ async fn update_rule(
 
 async fn delete_rule(
     State(state): State<AppState>,
-    Path(id): Path<String>
+    Path(id): Path<String>,
 ) -> Response {
     let mut conn = match state.pool.get() {
         Ok(conn) => conn,
