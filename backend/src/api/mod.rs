@@ -1,7 +1,7 @@
 pub mod routes;
 
-use axum::Router;
 use crate::{background::BackgroundServiceHandle, db::connection::DatabasePool};
+use axum::Router;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -14,7 +14,7 @@ pub fn create_routes(pool: DatabasePool, background_handle: BackgroundServiceHan
         pool,
         background: background_handle,
     };
-    
+
     Router::new()
         .merge(routes::health::routes())
         .merge(routes::imap_accounts::routes())
