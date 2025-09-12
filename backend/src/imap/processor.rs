@@ -22,7 +22,7 @@ impl EmailProcessor {
             .ok_or_else(|| anyhow::anyhow!("Account has no ID"))?;
         
         // Get email rules for this account
-        let rules = EmailRuleOpsGeneric::get_by_account_id(&self.pool, account_id)?
+        let rules = EmailRuleOpsGeneric::get_by_account_id(&self.pool, account_id)?;
         
         if rules.is_empty() {
             info!("No active rules for account: {}", self.account.name);
@@ -63,7 +63,7 @@ impl EmailProcessor {
         // Get the feed associated with this rule
         let rule_id = rule.id.as_ref()
             .ok_or_else(|| anyhow::anyhow!("Rule has no ID"))?;
-        let feeds = FeedOpsGeneric::get_by_rule_id(&self.pool, rule_id)?
+        let feeds = FeedOpsGeneric::get_by_rule_id(&self.pool, rule_id)?;
         if feeds.is_empty() {
             warn!("No feed configured for rule: {}", rule.name);
             return Ok(RuleProcessingResult {
