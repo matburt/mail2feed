@@ -1,12 +1,16 @@
+use crate::api::AppState;
+use crate::db::{
+    models::NewEmailRule,
+    operations_generic::{EmailRuleOpsGeneric, ImapAccountOpsGeneric},
+};
 use axum::{
-    routing::get, 
-    Router, Json, extract::{State, Path},
+    extract::{Path, State},
     http::StatusCode,
-    response::{IntoResponse, Response}
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
 };
 use serde::{Deserialize, Serialize};
-use crate::api::AppState;
-use crate::db::{operations_generic::{EmailRuleOpsGeneric, ImapAccountOpsGeneric}, models::NewEmailRule};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CreateEmailRuleRequest {
@@ -18,10 +22,10 @@ pub struct CreateEmailRuleRequest {
     pub subject_contains: Option<String>,
     pub label: Option<String>,
     pub is_active: bool,
-    pub post_process_action: Option<String>,  // Optional - inherits from account if not provided
+    pub post_process_action: Option<String>, // Optional - inherits from account if not provided
     pub move_to_folder: Option<String>,
     #[serde(default)]
-    pub inherit_account_defaults: bool,  // If true, ignore post_process_action and move_to_folder
+    pub inherit_account_defaults: bool, // If true, ignore post_process_action and move_to_folder
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -34,10 +38,10 @@ pub struct UpdateEmailRuleRequest {
     pub subject_contains: Option<String>,
     pub label: Option<String>,
     pub is_active: bool,
-    pub post_process_action: Option<String>,  // Optional - inherits from account if not provided
+    pub post_process_action: Option<String>, // Optional - inherits from account if not provided
     pub move_to_folder: Option<String>,
     #[serde(default)]
-    pub inherit_account_defaults: bool,  // If true, ignore post_process_action and move_to_folder
+    pub inherit_account_defaults: bool, // If true, ignore post_process_action and move_to_folder
 }
 
 #[derive(Debug, Serialize)]

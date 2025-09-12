@@ -1,14 +1,15 @@
-use axum::{
-    routing::{get, post},
-    Router, Json, extract::{State, Path},
-    http::StatusCode,
-};
-use serde::{Deserialize, Serialize};
 use crate::{
     api::AppState,
     background::{self, service::ServiceStatus},
 };
-use tracing::{info, error};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
+use serde::{Deserialize, Serialize};
+use tracing::{error, info};
 
 #[derive(Serialize)]
 pub struct BackgroundStatusResponse {
@@ -52,7 +53,7 @@ pub fn routes() -> Router<AppState> {
 
 /// Get background service status
 async fn get_status(
-    State(state): State<AppState>
+    State(state): State<AppState>,
 ) -> Result<Json<BackgroundStatusResponse>, (StatusCode, String)> {
     match background::get_service_status(&state.background).await {
         Some(status) => Ok(Json(BackgroundStatusResponse { status })),
@@ -66,10 +67,10 @@ async fn get_status(
 /// Start the background service
 async fn start_service(
     State(state): State<AppState>,
-    Json(_request): Json<StartServiceRequest>
+    Json(_request): Json<StartServiceRequest>,
 ) -> Result<Json<ServiceActionResponse>, (StatusCode, String)> {
     info!("API request to start background service");
-    
+
     match background::start_background_service(&state.background).await {
         Ok(()) => Ok(Json(ServiceActionResponse {
             success: true,
@@ -77,17 +78,20 @@ async fn start_service(
         })),
         Err(e) => {
             error!("Failed to start background service: {}", e);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to start service: {}", e)))
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to start service: {}", e),
+            ))
         }
     }
 }
 
 /// Stop the background service
 async fn stop_service(
-    State(state): State<AppState>
+    State(state): State<AppState>,
 ) -> Result<Json<ServiceActionResponse>, (StatusCode, String)> {
     info!("API request to stop background service");
-    
+
     match background::stop_background_service(&state.background).await {
         Ok(()) => Ok(Json(ServiceActionResponse {
             success: true,
@@ -95,25 +99,28 @@ async fn stop_service(
         })),
         Err(e) => {
             error!("Failed to stop background service: {}", e);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to stop service: {}", e)))
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to stop service: {}", e),
+            ))
         }
     }
 }
 
 /// Restart the background service
 async fn restart_service(
-    State(state): State<AppState>
+    State(state): State<AppState>,
 ) -> Result<Json<ServiceActionResponse>, (StatusCode, String)> {
     info!("API request to restart background service");
-    
+
     // Stop first
     if let Err(e) = background::stop_background_service(&state.background).await {
         error!("Failed to stop background service during restart: {}", e);
     }
-    
+
     // Wait a moment for cleanup
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    
+
     // Start again
     match background::start_background_service(&state.background).await {
         Ok(()) => Ok(Json(ServiceActionResponse {
@@ -122,7 +129,10 @@ async fn restart_service(
         })),
         Err(e) => {
             error!("Failed to restart background service: {}", e);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to restart service: {}", e)))
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to restart service: {}", e),
+            ))
         }
     }
 }
@@ -130,22 +140,29 @@ async fn restart_service(
 /// Process a specific account manually
 async fn process_account(
     Path(account_id): Path<String>,
-    State(state): State<AppState>
+    State(state): State<AppState>,
 ) -> Result<Json<ProcessAccountResponse>, (StatusCode, String)> {
     info!("API request to process account: {}", account_id);
-    
+
     // Verify the account exists
-    let mut conn = state.pool.get()
-        .map_err(|e| {
-            error!("Failed to get database connection: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Database connection failed".to_string())
-        })?;
-    
+    let mut conn = state.pool.get().map_err(|e| {
+        error!("Failed to get database connection: {}", e);
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Database connection failed".to_string(),
+        )
+    })?;
+
     use crate::db::operations::ImapAccountOps;
     match ImapAccountOps::get_by_id(&mut conn, &account_id) {
         Ok(_account) => {
             // Use the controller to trigger processing
-            match state.background.controller.process_account_now(account_id.clone()).await {
+            match state
+                .background
+                .controller
+                .process_account_now(account_id.clone())
+                .await
+            {
                 Ok(()) => Ok(Json(ProcessAccountResponse {
                     account_id: account_id.clone(),
                     success: true,
@@ -161,29 +178,31 @@ async fn process_account(
                 }
             }
         }
-        Err(_) => {
-            Err((StatusCode::NOT_FOUND, format!("Account {} not found", account_id)))
-        }
+        Err(_) => Err((
+            StatusCode::NOT_FOUND,
+            format!("Account {} not found", account_id),
+        )),
     }
 }
 
 /// Process all accounts manually (non-blocking)
 async fn process_all_accounts(
-    State(state): State<AppState>
+    State(state): State<AppState>,
 ) -> Result<Json<ServiceActionResponse>, (StatusCode, String)> {
     info!("API request to process all accounts via controller");
-    
+
     // Use the controller to trigger processing
     match state.background.controller.process_all_now().await {
-        Ok(()) => {
-            Ok(Json(ServiceActionResponse {
-                success: true,
-                message: "Triggered processing of all accounts".to_string(),
-            }))
-        }
+        Ok(()) => Ok(Json(ServiceActionResponse {
+            success: true,
+            message: "Triggered processing of all accounts".to_string(),
+        })),
         Err(e) => {
             error!("Failed to trigger account processing: {}", e);
-            Err((StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to trigger processing: {}", e)))
+            Err((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to trigger processing: {}", e),
+            ))
         }
     }
 }
